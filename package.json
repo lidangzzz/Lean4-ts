@@ -16,7 +16,12 @@
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist"
   },
-  "keywords": ["lean4", "compiler", "theorem-prover", "dependent-types"],
+  "keywords": [
+    "lean4",
+    "compiler",
+    "theorem-prover",
+    "dependent-types"
+  ],
   "author": "",
   "license": "MIT",
   "type": "commonjs",
