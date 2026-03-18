@@ -367,7 +367,7 @@ export class Lexer {
   }
 
   private isAlphaNumeric(char: string): boolean {
-    return this.isAlpha(char) || this.isDigit(char) || char === '_' || char === '\'' || char === '!';
+    return this.isAlpha(char) || this.isDigit(char) || char === '_' || char === '\'' || char === '!' || char === '?';
   }
 
   private isUnicodeLetter(char: string): boolean {

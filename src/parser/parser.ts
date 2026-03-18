@@ -276,6 +276,8 @@ export class Parser {
     if (this.match(TokenType.PIPE)) {
       // Pattern-matching style definition
       const cases: { patterns: AST.Pattern[], body: AST.Expr }[] = [];
+      // Track the starting column of the pattern-matching block for indentation-aware parsing
+      const patternStartColumn = this.current().column;
 
       do {
         this.skipNewlinesAndComments();
@@ -298,7 +300,8 @@ export class Parser {
           this.skipNewlinesAndComments();
         }
 
-        const body = this.parseExpr();
+        // Use indent-aware parsing for the body
+        const body = this.parseExprWithIndentStop(patternStartColumn);
         cases.push({ patterns, body });
         this.skipNewlinesAndComments();
       } while (this.match(TokenType.PIPE));
@@ -506,7 +509,18 @@ export class Parser {
 
       if (this.match(TokenType.PIPE)) {
         this.skipNewlinesAndComments();
-        const ctorName = this.expect(TokenType.IDENT, "Expected constructor name").value;
+        // Constructor name can be an identifier or a keyword (like 'fun')
+        let ctorName: string;
+        if (this.check(TokenType.IDENT)) {
+          ctorName = this.advance().value;
+        } else if (this.check(TokenType.FUN)) {
+          ctorName = 'fun';
+          this.advance();
+        } else if (this.checkAny(TokenType.MATCH, TokenType.IF, TokenType.LET, TokenType.DO, TokenType.FORALL, TokenType.FORALL2, TokenType.EXISTS, TokenType.EXISTS2)) {
+          ctorName = this.advance().value;
+        } else {
+          throw new ParseError("Expected constructor name", this.current());
+        }
         this.skipNewlinesAndComments();
 
         const ctorParams: AST.Binder[] = [];
@@ -887,14 +901,15 @@ export class Parser {
   private parseBindersGroup(): AST.Binder[] {
     this.skipNewlinesAndComments();
 
-    // Explicit binder (x : T) or (x y : T)
+    // Explicit binder (x : T) or (x y : T) or (_ : T)
     if (this.match(TokenType.LPAREN)) {
       this.skipNewlinesAndComments();
       const names: string[] = [];
 
-      // Parse all identifiers before the colon
-      while (this.check(TokenType.IDENT)) {
-        names.push(this.advance().value);
+      // Parse all identifiers (or underscores) before the colon
+      while (this.check(TokenType.IDENT) || this.check(TokenType.HOLE)) {
+        const token = this.advance();
+        names.push(token.value === '_' ? '_' : token.value);
         this.skipNewlinesAndComments();
       }
 
@@ -915,8 +930,9 @@ export class Parser {
       this.skipNewlinesAndComments();
       const names: string[] = [];
 
-      while (this.check(TokenType.IDENT)) {
-        names.push(this.advance().value);
+      while (this.check(TokenType.IDENT) || this.check(TokenType.HOLE)) {
+        const token = this.advance();
+        names.push(token.value === '_' ? '_' : token.value);
         this.skipNewlinesAndComments();
       }
 
@@ -935,8 +951,9 @@ export class Parser {
       this.skipNewlinesAndComments();
       const names: string[] = [];
 
-      while (this.check(TokenType.IDENT)) {
-        names.push(this.advance().value);
+      while (this.check(TokenType.IDENT) || this.check(TokenType.HOLE)) {
+        const token = this.advance();
+        names.push(token.value === '_' ? '_' : token.value);
         this.skipNewlinesAndComments();
       }
 
@@ -1707,8 +1724,14 @@ export class Parser {
     // Match expression
     if (this.match(TokenType.MATCH)) {
       this.skipNewlinesAndComments();
-      const scrutinee = this.parseExpr();
+      // Parse comma-separated scrutinees (e.g., match x, y with)
+      const scrutinees: AST.Expr[] = [this.parseExpr()];
       this.skipNewlinesAndComments();
+      while (this.match(TokenType.COMMA)) {
+        this.skipNewlinesAndComments();
+        scrutinees.push(this.parseExpr());
+        this.skipNewlinesAndComments();
+      }
       this.expect(TokenType.WITH, "Expected 'with'");
       this.skipNewlinesAndComments();
 
@@ -1716,8 +1739,14 @@ export class Parser {
 
       while (this.match(TokenType.PIPE)) {
         this.skipNewlinesAndComments();
-        const pattern = this.parsePattern();
+        // Parse comma-separated patterns for multiple scrutinees
+        const patterns: AST.Pattern[] = [this.parsePattern()];
         this.skipNewlinesAndComments();
+        while (this.match(TokenType.COMMA)) {
+          this.skipNewlinesAndComments();
+          patterns.push(this.parsePattern());
+          this.skipNewlinesAndComments();
+        }
 
         if (this.match(TokenType.FAT_ARROW) || this.match(TokenType.ARROW)) {
           this.skipNewlinesAndComments();
@@ -1726,12 +1755,20 @@ export class Parser {
         }
 
         const body = this.parseExpr();
+        // Create a tuple pattern if multiple patterns, otherwise single pattern
+        const pattern: AST.Pattern = patterns.length === 1
+          ? patterns[0]
+          : { kind: 'tuple', elements: patterns, loc: this.loc() };
         cases.push({ pattern, body, loc: this.loc() });
         this.skipNewlinesAndComments();
 
         if (!this.check(TokenType.PIPE)) break;
       }
 
+      // Create match expression with tuple scrutinee if multiple
+      const scrutinee: AST.Expr = scrutinees.length === 1
+        ? scrutinees[0]
+        : { kind: 'tuple', elements: scrutinees, loc: this.loc() };
       return AST.match_(scrutinee, cases, loc);
     }
 
@@ -1745,6 +1782,40 @@ export class Parser {
         isRecursive = true;
         this.advance(); // consume 'rec'
         this.skipNewlinesAndComments();
+      }
+
+      // Check for pattern-style let (starts with '(' for tuple pattern)
+      if (this.check(TokenType.LPAREN)) {
+        // Destructuring let: let (a, b, c) := expr
+        const pattern = this.parsePattern();
+        this.skipNewlinesAndComments();
+
+        this.expect(TokenType.ASSIGN, "Expected ':='");
+        this.skipNewlinesAndComments();
+
+        const value = this.parseExpr();
+        this.skipNewlinesAndComments();
+
+        // Parse the body (after the let binding)
+        let body: AST.Expr | undefined;
+        if (this.match(TokenType.IN)) {
+          this.skipNewlinesAndComments();
+          body = this.parseExpr();
+        } else if (this.checkAny(TokenType.IDENT, TokenType.NUMBER, TokenType.STRING, TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE, TokenType.IF, TokenType.MATCH, TokenType.LET, TokenType.DO, TokenType.FUN)) {
+          // Next token looks like an expression - parse as body
+          body = this.parseExpr();
+        }
+
+        // Return a let expression with a pattern
+        return {
+          kind: 'let',
+          name: '',  // Empty name indicates pattern-style let
+          pattern,
+          value,
+          body,
+          recursive: false,
+          loc: this.loc()
+        } as AST.LetExpr;
       }
 
       const name = this.expect(TokenType.IDENT, "Expected identifier").value;
@@ -2006,6 +2077,30 @@ export class Parser {
       // Create a structure constructor call
       // For now, create an object expression that the evaluator can handle
       return { kind: 'structLit', fields, loc } as any;
+    }
+
+    // Array literal with # prefix (#[1, 2, 3])
+    if (this.match(TokenType.HASH)) {
+      if (this.match(TokenType.LBRACKET)) {
+        this.skipNewlinesAndComments();
+        const elements: AST.Expr[] = [];
+
+        if (!this.check(TokenType.RBRACKET)) {
+          do {
+            this.skipNewlinesAndComments();
+            // Handle trailing comma
+            if (this.check(TokenType.RBRACKET)) break;
+            elements.push(this.parseExpr());
+            this.skipNewlinesAndComments();
+          } while (this.match(TokenType.COMMA));
+        }
+
+        this.expect(TokenType.RBRACKET, "Expected ']'");
+        return AST.arrayLit(elements, loc);
+      } else {
+        // Just a # symbol - error or handle other # syntax
+        throw new ParseError("Expected '[' after '#'", this.current());
+      }
     }
 
     // Array literal

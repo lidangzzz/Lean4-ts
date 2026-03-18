@@ -289,6 +289,22 @@ function evalPi(expr: AST.PiExpr | AST.ForallExpr, env: Env): Value {
 }
 
 function evalLet(expr: AST.LetExpr, env: Env): Value {
+  // Handle destructuring let with pattern
+  if (expr.pattern) {
+    const value = evaluate(expr.value, env);
+
+    // Match the pattern against the value
+    const bindings = matchPattern(expr.pattern, value, env);
+    if (!bindings) {
+      throw new EvalError(`Pattern match failure in let expression`);
+    }
+
+    if (expr.body) {
+      return evaluate(expr.body, bindings);
+    }
+    return value;
+  }
+
   if (expr.recursive) {
     // For recursive let, add a placeholder first, then evaluate
     const newEnv = new Map(env);

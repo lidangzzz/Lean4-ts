@@ -80,6 +80,7 @@ export interface PiExpr extends BaseNode {
 export interface LetExpr extends BaseNode {
   kind: 'let';
   name: string;
+  pattern?: Pattern;  // Optional pattern for destructuring let
   type?: Expr;
   value: Expr;
   body?: Expr;
