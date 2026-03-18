@@ -66,3 +66,14 @@ def sz := cacheSize' finalCache
 def x := (if c1 then 1 else 0) + (if c2 then 1 else 0) + (if c3 then 1 else 0) +
          (if c4 then 1 else 0) + (if c5 then 1 else 0) + (if c6 then 1 else 0) +
          (if c7 then 1 else 0) + sz
+
+-- Output results
+#eval s!"Contains 1: {c1}"
+#eval s!"Contains 2: {c2}"
+#eval s!"Contains 3: {c3}"
+#eval s!"Contains 4: {c4}"
+#eval s!"Contains 5: {c5}"
+#eval s!"Contains 6: {c6}"
+#eval s!"Contains 7: {c7}"
+#eval s!"Cache size: {sz}"
+#eval s!"Total x: {x}"

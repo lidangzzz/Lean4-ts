@@ -21,7 +21,7 @@ def treeFlatten : Tree → List Nat
 
 def treeInsert : Nat → Tree → Tree
   | n, Tree.leaf => Tree.node n Tree.leaf Tree.leaf
-  | n, Tree.node v l r => 
+  | n, Tree.node v l r =>
     if n < v then Tree.node v (treeInsert n l) r
     else Tree.node v l (treeInsert n r)
 
@@ -34,3 +34,9 @@ def h := treeHeight testTree
 def s := treeSize testTree
 def sum := treeSum testTree
 def x := h + s + sum
+
+#eval testTree
+#eval h
+#eval s
+#eval sum
+#eval x

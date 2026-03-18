@@ -10,7 +10,7 @@ def hash3 (s : String) : Nat :=
 
 def bloomSize := 1000
 
-def bloomInit : Array Bool := Array.mkArray bloomSize false
+def bloomInit : Array Bool := Array.replicate bloomSize false
 
 def bloomAdd (bf : Array Bool) (s : String) : Array Bool :=
   let h1 := hash1 s % bloomSize
@@ -22,7 +22,7 @@ def bloomContains (bf : Array Bool) (s : String) : Bool :=
   let h1 := hash1 s % bloomSize
   let h2 := hash2 s % bloomSize
   let h3 := hash3 s % bloomSize
-  bf.get! h1 && bf.get! h2 && bf.get! h3
+  bf.getD h1 false && bf.getD h2 false && bf.getD h3 false
 
 def words := ["apple", "banana", "cherry", "date", "elderberry", "fig", "grape", "honeydew"]
 
@@ -47,3 +47,16 @@ def x := (if c1 then 1 else 0) + (if c2 then 1 else 0) + (if c3 then 1 else 0) +
          (if c4 then 1 else 0) + (if c5 then 1 else 0) + (if c6 then 1 else 0) +
          (if c7 then 1 else 0) + (if c8 then 1 else 0) + (if c9 then 1 else 0) +
          (if c10 then 1 else 0)
+
+-- Output results
+#eval s!"Contains 'apple': {c1}"
+#eval s!"Contains 'banana': {c2}"
+#eval s!"Contains 'cherry': {c3}"
+#eval s!"Contains 'zebra': {c4}"
+#eval s!"Contains 'aardvark': {c5}"
+#eval s!"Contains 'fig': {c6}"
+#eval s!"Contains 'grapefruit': {c7}"
+#eval s!"Contains '1' (bf2): {c8}"
+#eval s!"Contains '5' (bf2): {c9}"
+#eval s!"Contains '100' (bf2): {c10}"
+#eval s!"Total matches: {x}"

@@ -48,6 +48,11 @@ export enum TokenType {
   PROTECTED = 'PROTECTED',
   MUT = 'MUT',
   RETURN = 'RETURN',
+  TERMINATION_BY = 'TERMINATION_BY',
+  DECREASING_BY = 'DECREASING_BY',
+  ALL_GOALS = 'ALL_GOALS',
+  SIMP = 'SIMP',
+  OMEGA = 'OMEGA',
 
   // Operators
   ARROW = 'ARROW',         // ->
@@ -165,6 +170,11 @@ export const KEYWORDS: Record<string, TokenType> = {
   'protected': TokenType.PROTECTED,
   'mut': TokenType.MUT,
   'return': TokenType.RETURN,
+  'termination_by': TokenType.TERMINATION_BY,
+  'decreasing_by': TokenType.DECREASING_BY,
+  'all_goals': TokenType.ALL_GOALS,
+  'simp': TokenType.SIMP,
+  'omega': TokenType.OMEGA,
   'extends': TokenType.EXTENDS,
   '_': TokenType.HOLE
 };

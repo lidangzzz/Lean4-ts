@@ -95,3 +95,12 @@ def count2 := countElements page2
 def count3 := countElements page3
 
 def x := count1 + count2 + count3 + html1.length + html2.length + html3.length
+
+-- Output results
+#eval s!"HTML 1 element count: {count1}"
+#eval s!"HTML 2 element count: {count2}"
+#eval s!"HTML 3 element count: {count3}"
+#eval s!"HTML 1 length: {html1.length}"
+#eval s!"HTML 2 length: {html2.length}"
+#eval s!"HTML 3 length: {html3.length}"
+#eval s!"Total x: {x}"

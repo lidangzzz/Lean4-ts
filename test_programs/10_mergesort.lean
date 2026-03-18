@@ -33,3 +33,6 @@ def sumSorted := match sorted with
       | x :: xs => x + sum xs
     sum sorted
 def x := sumSorted
+
+-- output the sorted list
+#eval sorted

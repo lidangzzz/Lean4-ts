@@ -5,7 +5,7 @@ inductive BST where
 
 def bstContains : Nat → BST → Bool
   | _, BST.leaf => false
-  | n, BST.node v l r => 
+  | n, BST.node v l r =>
     if n == v then true
     else if n < v then bstContains n l
     else bstContains n r
@@ -37,3 +37,6 @@ def has25 := if bstContains 25 myBst then 1 else 0
 def minVal := match bstMin myBst with | some v => v | none => 0
 def maxVal := match bstMax myBst with | some v => v | none => 0
 def x := has30 + has25 + minVal + maxVal
+
+#eval myBst
+#eval has30

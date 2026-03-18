@@ -5,10 +5,10 @@ def fib : Nat → Nat
   | n + 2 => fib n + fib (n + 1)
 
 def fibFast : Nat → Nat
-  | n => 
+  | n =>
     let rec loop : Nat → Nat → Nat → Nat
       | 0, a, _ => a
-      | n, a, b => loop (n - 1) b (a + b)
+      | n + 1, a, b => loop n b (a + b)
     loop n 0 1
 
 def fibList : Nat → List Nat
@@ -25,3 +25,12 @@ def f20 := fib 20
 def f20f := fibFast 20
 def fList := fibList 10
 def x := f20 + f20f
+
+-- Output results
+#eval fib 10
+#eval fibFast 10
+#eval fibList 10
+#eval f20
+#eval f20f
+#eval fList
+#eval x

@@ -1,35 +1,32 @@
 -- Test 46: RSA Encryption/Decryption simulation
-def modPow (base exp mod : Nat) : Nat :=
-  let rec loop (b e acc : Nat) : Nat :=
-    if e = 0 then acc
-    else if e % 2 = 0 then loop (b * b % mod) (e / 2) acc
-    else loop (b * b % mod) (e / 2) (acc * b % mod)
-  loop base exp 1
+partial def modPow (base exp mod : Nat) : Nat :=
+  if exp = 0 then 1
+  else if exp % 2 = 0 then modPow (base * base % mod) (exp / 2) mod
+  else base * modPow (base * base % mod) (exp / 2) mod % mod
 
-def gcd (a b : Nat) : Nat :=
+partial def gcd (a b : Nat) : Nat :=
   if b = 0 then a else gcd b (a % b)
 
-def modInverse (a m : Nat) : Nat :=
-  let rec extendedGcd (x y : Nat) : Nat × Nat × Nat :=
-    if y = 0 then (x, 1, 0)
-    else
-      let (g, s, t) := extendedGcd y (x % y)
-      (g, t, s - (x / y) * t)
-  let (g, inv, _) := extendedGcd a m
-  if g = 1 then (inv % m + m) % m else 0
+-- Simple modular inverse using brute force (works for small numbers)
+partial def modInverse (a m : Nat) : Nat :=
+  let rec find (x : Nat) : Nat :=
+    if x >= m then 0  -- No inverse found
+    else if (a * x) % m = 1 then x
+    else find (x + 1)
+  find 1
+
+partial def isPrimeCheck (n d : Nat) : Bool :=
+  if d * d > n then true
+  else if n % d = 0 then false
+  else isPrimeCheck n (d + 2)
 
 def isPrime (n : Nat) : Bool :=
   if n < 2 then false
   else if n = 2 then true
   else if n % 2 = 0 then false
-  else
-    let rec check (d : Nat) : Bool :=
-      if d * d > n then true
-      else if n % d = 0 then false
-      else check (d + 2)
-    check 3
+  else isPrimeCheck n 3
 
-def nextPrime (n : Nat) : Nat :=
+partial def nextPrime (n : Nat) : Nat :=
   if isPrime n then n else nextPrime (n + 1)
 
 def p := nextPrime 61
@@ -37,7 +34,7 @@ def q := nextPrime 53
 def n := p * q
 def phi := (p - 1) * (q - 1)
 
-def findE (phi : Nat) (start : Nat) : Nat :=
+partial def findE (phi : Nat) (start : Nat) : Nat :=
   if gcd start phi = 1 then start
   else findE phi (start + 1)
 
@@ -62,3 +59,22 @@ def decrypted3 := rsaDecrypt encrypted3
 def success := (message = decrypted) && (message2 = decrypted2) && (message3 = decrypted3)
 
 def x := (if success then 100 else 0) + p + q + n + e + message + decrypted
+
+-- Output results
+#eval s!"p: {p}"
+#eval s!"q: {q}"
+#eval s!"n: {n}"
+#eval s!"phi: {phi}"
+#eval s!"e: {e}"
+#eval s!"d: {d}"
+#eval s!"Message: {message}"
+#eval s!"Encrypted: {encrypted}"
+#eval s!"Decrypted: {decrypted}"
+#eval s!"Message2: {message2}"
+#eval s!"Encrypted2: {encrypted2}"
+#eval s!"Decrypted2: {decrypted2}"
+#eval s!"Message3: {message3}"
+#eval s!"Encrypted3: {encrypted3}"
+#eval s!"Decrypted3: {decrypted3}"
+#eval s!"Success: {success}"
+#eval s!"Total x: {x}"

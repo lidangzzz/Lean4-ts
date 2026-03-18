@@ -45,3 +45,12 @@ def revSum := List.foldl (fun a b => a + b) 0 rev
 def inter := intersperse 0 testList
 def interSum := List.foldl (fun a b => a + b) 0 inter
 def x := h + l + revSum + interSum
+
+-- Output results
+#eval h
+#eval l
+#eval rev
+#eval revSum
+#eval inter
+#eval interSum
+#eval x

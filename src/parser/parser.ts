@@ -148,6 +148,46 @@ export class Parser {
     while (this.match(TokenType.NEWLINE) || this.match(TokenType.COMMENT) || this.match(TokenType.DOCSTRING)) {}
   }
 
+  // Skip termination_by and decreasing_by blocks (we don't fully support them yet)
+  private skipTerminationAndDecreasingBlocks(): void {
+    this.skipNewlinesAndComments();
+
+    // Skip termination_by block
+    if (this.check(TokenType.IDENT) && this.current().value === 'termination_by') {
+      this.advance(); // consume 'termination_by'
+      this.skipNewlinesAndComments();
+
+      // Skip until we hit decreasing_by or a new definition/declaration
+      while (!this.isAtEnd() &&
+             !(this.check(TokenType.IDENT) && this.current().value === 'decreasing_by') &&
+             !this.checkAny(TokenType.DEF, TokenType.THEOREM, TokenType.AXIOM, TokenType.CONSTANT,
+                           TokenType.INDUCTIVE, TokenType.STRUCTURE, TokenType.CLASS, TokenType.INSTANCE,
+                           TokenType.NAMESPACE, TokenType.END, TokenType.VARIABLE, TokenType.UNIVERSAL,
+                           TokenType.IMPORT, TokenType.OPEN, TokenType.PRIVATE, TokenType.PROTECTED)) {
+        this.advance();
+        this.skipNewlinesAndComments();
+      }
+    }
+
+    this.skipNewlinesAndComments();
+
+    // Skip decreasing_by block
+    if (this.check(TokenType.IDENT) && this.current().value === 'decreasing_by') {
+      this.advance(); // consume 'decreasing_by'
+      this.skipNewlinesAndComments();
+
+      // Skip until we hit a new definition/declaration
+      while (!this.isAtEnd() &&
+             !this.checkAny(TokenType.DEF, TokenType.THEOREM, TokenType.AXIOM, TokenType.CONSTANT,
+                           TokenType.INDUCTIVE, TokenType.STRUCTURE, TokenType.CLASS, TokenType.INSTANCE,
+                           TokenType.NAMESPACE, TokenType.END, TokenType.VARIABLE, TokenType.UNIVERSAL,
+                           TokenType.IMPORT, TokenType.OPEN, TokenType.PRIVATE, TokenType.PROTECTED)) {
+        this.advance();
+        this.skipNewlinesAndComments();
+      }
+    }
+  }
+
   private loc(): AST.SourceLocation {
     const token = this.current();
     return { line: token.line, column: token.column };
@@ -313,6 +353,7 @@ export class Parser {
           value = cases[0].body;
         }
 
+        this.skipTerminationAndDecreasingBlocks();
         return {
           kind: 'def',
           name,
@@ -333,6 +374,7 @@ export class Parser {
 
     const value = this.parseExpr();
 
+    this.skipTerminationAndDecreasingBlocks();
     return {
       kind: 'def',
       name,
@@ -962,6 +1004,227 @@ export class Parser {
     return left;
   }
 
+  // Parse expression but stop when hitting a line at or before minColumn
+  private parseExprWithIndentStop(minColumn: number): AST.Expr {
+    const prevMinIndent = this.minIndentColumn;
+    this.minIndentColumn = minColumn;
+    try {
+      return this.parseExprIndentAware();
+    } finally {
+      this.minIndentColumn = prevMinIndent;
+    }
+  }
+
+  // Expression parsing that respects minIndentColumn
+  private parseExprIndentAware(): AST.Expr {
+    let left = this.parseImpliesExprIndentAware();
+
+    // Handle pipe forward operator |>
+    while (this.match(TokenType.PIPE_FWD)) {
+      if (this.shouldStopAtIndent()) break;
+      this.skipNewlinesAndComments();
+
+      if (this.match(TokenType.DOT)) {
+        this.skipNewlinesAndComments();
+        const methodName = this.expect(TokenType.IDENT, "Expected method name after |>.b").value;
+        let methodExpr: AST.Expr = {
+          kind: 'fieldAccess',
+          object: left,
+          field: methodName,
+          loc: this.loc()
+        };
+
+        while (this.checkAny(TokenType.LPAREN, TokenType.LBRACKET, TokenType.IDENT, TokenType.NUMBER, TokenType.STRING)) {
+          if (this.shouldStopAtIndent()) break;
+          const arg = this.parseArg();
+          if (!arg) break;
+          methodExpr = AST.app(methodExpr, arg.expr, !arg.implicit, this.loc());
+        }
+
+        left = methodExpr;
+      } else {
+        const right = this.parseImpliesExprIndentAware();
+        left = AST.app(right, left, true, this.loc());
+      }
+    }
+
+    return left;
+  }
+
+  // Check if we should stop parsing due to indentation
+  private shouldStopAtIndent(): boolean {
+    // Stop if current token is at or before the minimum indent column
+    return this.current().column <= this.minIndentColumn && this.minIndentColumn > 0;
+  }
+
+  private parseImpliesExprIndentAware(): AST.Expr {
+    let left = this.parseOrExprIndentAware();
+
+    while ((this.match(TokenType.RARROW2) || this.match(TokenType.ARROW)) && !this.shouldStopAtIndent()) {
+      const right = this.parseOrExprIndentAware();
+      left = AST.binOp('implies', left, right, this.loc());
+    }
+
+    return left;
+  }
+
+  private parseOrExprIndentAware(): AST.Expr {
+    let left = this.parseAndExprIndentAware();
+
+    while ((this.match(TokenType.LOR) || this.match(TokenType.OR)) && !this.shouldStopAtIndent()) {
+      if (this.shouldStopAtIndent()) break;
+      this.skipNewlinesAndComments();
+      const right = this.parseAndExprIndentAware();
+      left = AST.binOp('or', left, right, this.loc());
+    }
+
+    return left;
+  }
+
+  private parseAndExprIndentAware(): AST.Expr {
+    let left = this.parseComparisonExprIndentAware();
+
+    while ((this.match(TokenType.LAND) || this.match(TokenType.AND)) && !this.shouldStopAtIndent()) {
+      if (this.shouldStopAtIndent()) break;
+      this.skipNewlinesAndComments();
+      const right = this.parseComparisonExprIndentAware();
+      left = AST.binOp('and', left, right, this.loc());
+    }
+
+    return left;
+  }
+
+  private parseComparisonExprIndentAware(): AST.Expr {
+    let left = this.parseAddExprIndentAware();
+
+    while (!this.shouldStopAtIndent()) {
+      let op: AST.BinaryOp | null = null;
+
+      if (this.match(TokenType.EQ)) op = 'eq';
+      else if (this.match(TokenType.NE)) op = 'ne';
+      else if (this.match(TokenType.LT)) op = 'lt';
+      else if (this.match(TokenType.LE)) op = 'le';
+      else if (this.match(TokenType.GT)) op = 'gt';
+      else if (this.match(TokenType.GE)) op = 'ge';
+      else if (this.current().value === '==') {
+        this.advance();
+        op = 'eq';
+      }
+
+      if (!op) break;
+
+      if (this.shouldStopAtIndent()) break;
+      this.skipNewlinesAndComments();
+      const right = this.parseAddExprIndentAware();
+      left = AST.binOp(op, left, right, this.loc());
+    }
+
+    return left;
+  }
+
+  private parseAddExprIndentAware(): AST.Expr {
+    let left = this.parseMulExprIndentAware();
+
+    while ((this.check(TokenType.PLUS) || this.check(TokenType.MINUS) || this.check(TokenType.APPEND) || this.check(TokenType.DCOLON)) && !this.shouldStopAtIndent()) {
+      let op: AST.BinaryOp;
+      const tokenType = this.advance().type;
+      if (tokenType === TokenType.PLUS) {
+        op = 'add';
+      } else if (tokenType === TokenType.MINUS) {
+        op = 'sub';
+      } else if (tokenType === TokenType.DCOLON) {
+        op = 'cons';
+      } else {
+        op = 'append';
+      }
+      if (this.shouldStopAtIndent()) {
+        // Put the token back
+        this.pos--;
+        break;
+      }
+      this.skipNewlinesAndComments();
+      const right = tokenType === TokenType.DCOLON ? this.parseAddExprIndentAware() : this.parseMulExprIndentAware();
+      left = AST.binOp(op, left, right, this.loc());
+    }
+
+    return left;
+  }
+
+  private parseMulExprIndentAware(): AST.Expr {
+    let left = this.parseUnaryExprIndentAware();
+
+    while ((this.check(TokenType.STAR) || this.check(TokenType.SLASH) || this.check(TokenType.PERCENT) || this.check(TokenType.MULTIPLIER)) && !this.shouldStopAtIndent()) {
+      let op: AST.BinaryOp;
+      const tokenType = this.advance().type;
+      switch (tokenType) {
+        case TokenType.STAR: op = 'mul'; break;
+        case TokenType.SLASH: op = 'div'; break;
+        case TokenType.MULTIPLIER: op = 'mul'; break;
+        default: op = 'mod';
+      }
+      if (this.shouldStopAtIndent()) {
+        this.pos--;
+        break;
+      }
+      this.skipNewlinesAndComments();
+      const right = this.parseUnaryExprIndentAware();
+      left = AST.binOp(op, left, right, this.loc());
+    }
+
+    return left;
+  }
+
+  private parseUnaryExprIndentAware(): AST.Expr {
+    if ((this.match(TokenType.BANG) || this.match(TokenType.LNOT)) && !this.shouldStopAtIndent()) {
+      const operand = this.parseUnaryExprIndentAware();
+      return AST.unaryOp('not', operand, this.loc());
+    }
+
+    if (this.match(TokenType.MINUS) && !this.shouldStopAtIndent()) {
+      const operand = this.parseUnaryExprIndentAware();
+      return AST.unaryOp('neg', operand, this.loc());
+    }
+
+    return this.parseAppExprIndentAware();
+  }
+
+  private parseAppExprIndentAware(): AST.Expr {
+    let expr = this.parsePrimaryExprIndentAware();
+
+    if (expr.kind === 'literal') {
+      if (this.match(TokenType.DOT) && !this.shouldStopAtIndent()) {
+        if (this.check(TokenType.IDENT)) {
+          const field = this.advance().value;
+          return {
+            kind: 'fieldAccess',
+            object: expr,
+            field,
+            loc: this.loc()
+          };
+        }
+      }
+      return expr;
+    }
+
+    while (!this.isAtEnd() && !this.shouldStopAtIndent()) {
+      const arg = this.parseArgIndentAware();
+      if (!arg) break;
+      expr = AST.app(expr, arg.expr, !arg.implicit, this.loc());
+    }
+
+    return expr;
+  }
+
+  private parseArgIndentAware(): { expr: AST.Expr; implicit: boolean } | null {
+    if (this.shouldStopAtIndent()) return null;
+    return this.parseArg();
+  }
+
+  private parsePrimaryExprIndentAware(): AST.Expr {
+    // Delegate to parsePrimaryExpr but with indent awareness
+    return this.parsePrimaryExpr();
+  }
+
   private parseImpliesExpr(): AST.Expr {
     let left = this.parseOrExpr();
 
@@ -1496,6 +1759,111 @@ export class Parser {
         this.skipNewlinesAndComments();
         type = this.parseExpr();
         this.skipNewlinesAndComments();
+      }
+
+      // Check for pattern-matching style (with | patterns)
+      if (this.match(TokenType.PIPE)) {
+        // Pattern-matching style let rec
+        // Track the indentation of the 'let' keyword to know where the body should start
+        // The body should be at a column less than the 'let rec' keyword's column
+        const letStartColumn = loc.column;
+        const cases: { patterns: AST.Pattern[], body: AST.Expr }[] = [];
+
+        // Helper to check if current position looks like a pattern at the right indentation
+        const looksLikePatternAtIndent = (): boolean => {
+          // Check if current token is at a greater column than the 'let' keyword
+          // This ensures we don't treat the 'let' body as a pattern
+          if (this.current().column <= letStartColumn) return false;
+          return this.checkAny(TokenType.LBRACKET, TokenType.LPAREN, TokenType.IDENT, TokenType.HOLE, TokenType.NUMBER, TokenType.STRING);
+        };
+
+        let prevLine = 0;
+        do {
+          this.skipNewlinesAndComments();
+          const patterns: AST.Pattern[] = [];
+
+          // Parse patterns until we hit =>
+          while (!this.checkAny(TokenType.FAT_ARROW, TokenType.ARROW)) {
+            const pattern = this.parsePattern();
+            patterns.push(pattern);
+            this.skipNewlinesAndComments();
+            // Skip comma between patterns
+            if (this.match(TokenType.COMMA)) {
+              this.skipNewlinesAndComments();
+            }
+            if (this.checkAny(TokenType.FAT_ARROW, TokenType.ARROW)) break;
+          }
+
+          // Consume =>
+          if (this.match(TokenType.FAT_ARROW) || this.match(TokenType.ARROW)) {
+            this.skipNewlinesAndComments();
+          }
+
+          // Parse the body, but stop when we hit a line at or before the 'let rec' column
+          const body = this.parseExprWithIndentStop(letStartColumn);
+          cases.push({ patterns, body });
+          prevLine = this.current().line;
+          this.skipNewlinesAndComments();
+        } while (this.match(TokenType.PIPE) || (this.current().line > prevLine && looksLikePatternAtIndent()));
+
+        // Convert pattern-matching to a match expression
+        let value: AST.Expr;
+        if (params.length > 0 || cases[0].patterns.length > 0) {
+          // Build match expression
+          const matchCases: AST.MatchCase[] = cases.map((c, idx) => ({
+            pattern: c.patterns.length === 1 ? c.patterns[0] : { kind: 'tuple', elements: c.patterns, loc: this.loc() },
+            body: c.body,
+            loc: this.loc()
+          }));
+
+          // For pattern-matching let recs, the patterns are on the parameters
+          if (cases[0].patterns.length === 1) {
+            // Single parameter match
+            const paramName = params.length > 0 ? params[0].name : '_arg';
+            value = {
+              kind: 'fun',
+              params: params.length > 0 ? params : [{ name: paramName, type: undefined, implicit: false, instImplicit: false, strictImplicit: false }],
+              body: {
+                kind: 'match',
+                scrutinee: { kind: 'ident', name: paramName, loc: this.loc() },
+                cases: matchCases,
+                loc: this.loc()
+              },
+              loc: this.loc()
+            };
+          } else {
+            // Multiple parameters - create nested lambdas
+            const paramNames = params.length > 0 ? params.map(p => p.name) : cases[0].patterns.map((_, i) => `_arg${i}`);
+            value = {
+              kind: 'fun',
+              params: params.length > 0 ? params : paramNames.map(n => ({ name: n, type: undefined, implicit: false, instImplicit: false, strictImplicit: false })),
+              body: {
+                kind: 'match',
+                scrutinee: paramNames.length === 1
+                  ? { kind: 'ident', name: paramNames[0], loc: this.loc() }
+                  : { kind: 'tuple', elements: paramNames.map(n => ({ kind: 'ident', name: n, loc: this.loc() })), loc: this.loc() },
+                cases: matchCases,
+                loc: this.loc()
+              },
+              loc: this.loc()
+            };
+          }
+        } else {
+          value = cases[0].body;
+        }
+
+        let body: AST.Expr | undefined;
+        this.skipNewlinesAndComments();
+
+        if (this.match(TokenType.IN)) {
+          this.skipNewlinesAndComments();
+          body = this.parseExpr();
+        } else if (this.checkAny(TokenType.IDENT, TokenType.NUMBER, TokenType.STRING, TokenType.LPAREN, TokenType.LBRACKET, TokenType.LBRACE, TokenType.IF, TokenType.MATCH, TokenType.LET, TokenType.DO, TokenType.FUN)) {
+          // Next token looks like an expression - parse as body
+          body = this.parseExpr();
+        }
+
+        return AST.let_(name, value, body, type, isRecursive, loc);
       }
 
       this.expect(TokenType.ASSIGN, "Expected ':='");

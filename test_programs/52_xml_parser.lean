@@ -26,7 +26,7 @@ def xmlCountElements : XmlNode → Nat
 def xmlFindAttr : XmlNode → String → Option String
   | XmlNode.text _, _ => none
   | XmlNode.element _ attrs _, name =>
-    attrs.find? (fun (k, _) => k = name) |>.map snd
+    attrs.find? (fun (k, _) => k = name) |>.map (·.snd)
 
 def xml1 := XmlNode.element "root" [] [
   XmlNode.text "Hello, ",
@@ -78,3 +78,11 @@ def e3 := xmlCountElements xml3
 def attr := xmlFindAttr xml2 "class"
 
 def x := d1 + d2 + d3 + n1 + n2 + n3 + e1 + e2 + e3 + (match attr with | some "main" => 1 | _ => 0)
+
+-- Output results
+#eval s!"XML 1: {s1}"
+#eval s!"Depth 1: {d1}, Depth 2: {d2}, Depth 3: {d3}"
+#eval s!"Nodes 1: {n1}, Nodes 2: {n2}, Nodes 3: {n3}"
+#eval s!"Elements 1: {e1}, Elements 2: {e2}, Elements 3: {e3}"
+#eval s!"Found attr 'class': {attr}"
+#eval s!"Total x: {x}"

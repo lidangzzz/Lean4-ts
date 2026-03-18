@@ -1,15 +1,20 @@
 -- Test 56: Lambda Calculus Interpreter
 inductive LambdaTerm where
-  | var : Nat → LambdaTerm
-  | app : LambdaTerm → LambdaTerm → LambdaTerm
-  | lam : Nat → LambdaTerm → LambdaTerm
+  | var : Nat -> LambdaTerm
+  | app : LambdaTerm -> LambdaTerm -> LambdaTerm
+  | lam : Nat -> LambdaTerm -> LambdaTerm
 
-def freeVars : LambdaTerm → List Nat
+def freeVars : LambdaTerm -> List Nat
   | LambdaTerm.var x => [x]
   | LambdaTerm.app f a => freeVars f ++ freeVars a
-  | LambdaTerm.lam x body => freeVars body |>.filter (· ≠ x)
+  | LambdaTerm.lam x body => freeVars body |>.filter (fun v => v != x)
 
-def substitute (body : LambdaTerm) (x : Nat) (replacement : LambdaTerm) : LambdaTerm :=
+def maxVar : LambdaTerm -> Nat
+  | LambdaTerm.var x => x
+  | LambdaTerm.app f a => max (maxVar f) (maxVar a)
+  | LambdaTerm.lam x body => max x (maxVar body)
+
+partial def substitute (body : LambdaTerm) (x : Nat) (replacement : LambdaTerm) : LambdaTerm :=
   match body with
   | LambdaTerm.var y => if y = x then replacement else body
   | LambdaTerm.app f a => LambdaTerm.app (substitute f x replacement) (substitute a x replacement)
@@ -20,16 +25,11 @@ def substitute (body : LambdaTerm) (x : Nat) (replacement : LambdaTerm) : Lambda
       LambdaTerm.lam freshY (substitute (substitute b y (LambdaTerm.var freshY)) x replacement)
     else LambdaTerm.lam y (substitute b x replacement)
 
-def maxVar : LambdaTerm → Nat
-  | LambdaTerm.var x => x
-  | LambdaTerm.app f a => max (maxVar f) (maxVar a)
-  | LambdaTerm.lam x body => max x (maxVar body)
-
-def isRedex : LambdaTerm → Bool
+def isRedex : LambdaTerm -> Bool
   | LambdaTerm.app (LambdaTerm.lam _ _) _ => true
   | _ => false
 
-def reduce1 : LambdaTerm → Option LambdaTerm
+partial def reduce1 : LambdaTerm -> Option LambdaTerm
   | LambdaTerm.app (LambdaTerm.lam x body) arg => some (substitute body x arg)
   | LambdaTerm.app f a =>
     match reduce1 f with
@@ -43,7 +43,7 @@ def reduce1 : LambdaTerm → Option LambdaTerm
     | none => none
   | _ => none
 
-def reduceN (term : LambdaTerm) (fuel : Nat) : LambdaTerm :=
+partial def reduceN (term : LambdaTerm) (fuel : Nat) : LambdaTerm :=
   match fuel with
   | 0 => term
   | n + 1 =>
@@ -51,12 +51,12 @@ def reduceN (term : LambdaTerm) (fuel : Nat) : LambdaTerm :=
     | some term' => reduceN term' n
     | none => term
 
-def termSize : LambdaTerm → Nat
+def termSize : LambdaTerm -> Nat
   | LambdaTerm.var _ => 1
   | LambdaTerm.app f a => 1 + termSize f + termSize a
   | LambdaTerm.lam _ body => 1 + termSize body
 
-def termDepth : LambdaTerm → Nat
+def termDepth : LambdaTerm -> Nat
   | LambdaTerm.var _ => 0
   | LambdaTerm.app f a => 1 + max (termDepth f) (termDepth a)
   | LambdaTerm.lam _ body => 1 + termDepth body
@@ -80,3 +80,11 @@ def d2 := termDepth constTerm
 def d3 := termDepth flipTerm
 
 def x := s1 + s2 + s3 + d1 + d2 + d3 + (termSize reducedId) + (termSize reducedConst)
+
+-- Output results
+#eval s!"idTerm size: {s1}, depth: {d1}"
+#eval s!"constTerm size: {s2}, depth: {d2}"
+#eval s!"flipTerm size: {s3}, depth: {d3}"
+#eval s!"reducedId size: {termSize reducedId}"
+#eval s!"reducedConst size: {termSize reducedConst}"
+#eval s!"Total x: {x}"

@@ -1,5 +1,6 @@
 -- Test 48: Huffman Coding (simplified)
 inductive HuffTree where | leaf : Char → Nat → HuffTree | node : Nat → HuffTree → HuffTree → HuffTree
+  deriving Inhabited, Repr
 
 def huffWeight : HuffTree → Nat
   | HuffTree.leaf _ w => w
@@ -15,26 +16,27 @@ def huffFreq (s : String) : List (Char × Nat) :=
   ) []
   freqs.toArray.qsort (fun a b => a.2 > b.2) |>.toList
 
+partial def buildHuffAux (trees : List HuffTree) : HuffTree :=
+  match trees with
+  | [t] => t
+  | _ =>
+    let sorted := trees.toArray.qsort (fun a b => huffWeight a < huffWeight b) |>.toList
+    match sorted with
+    | t1 :: t2 :: rest =>
+      let combined := HuffTree.node (huffWeight t1 + huffWeight t2) t1 t2
+      buildHuffAux (combined :: rest)
+    | _ => trees.head!
+
 def buildHuff (freqs : List (Char × Nat)) : HuffTree :=
   let leaves := freqs.map (fun (c, w) => HuffTree.leaf c w)
-  let rec build (trees : List HuffTree) : HuffTree :=
-    match trees with
-    | [t] => t
-    | _ =>
-      let sorted := trees.toArray.qsort (fun a b => huffWeight a < huffWeight b) |>.toList
-      match sorted with
-      | t1 :: t2 :: rest =>
-        let combined := HuffTree.node (huffWeight t1 + huffWeight t2) t1 t2
-        build (combined :: rest)
-      | _ => trees.head!
-  build leaves
+  buildHuffAux leaves
 
 def huffCodeLength : HuffTree → Nat → List (Char × Nat)
   | HuffTree.leaf c _, depth => [(c, depth)]
   | HuffTree.node _ l r, depth =>
     huffCodeLength l (depth + 1) ++ huffCodeLength r (depth + 1)
 
-def avgCodeLength (s : String) : Float :=
+def avgCodeLength (s : String) : Nat :=
   let freqs := huffFreq s
   let tree := buildHuff freqs
   let codes := huffCodeLength tree 0
@@ -42,7 +44,7 @@ def avgCodeLength (s : String) : Float :=
   let weightedSum := codes.foldl (fun acc (c, len) =>
     let cnt := (freqs.find? (fun (ch, _) => ch = c)).getD (c, 1) |>.snd
     acc + len * cnt) 0
-  (weightedSum.toFloat / total.toFloat)
+  if total > 0 then (weightedSum * 100) / total else 0
 
 def text1 := "AAAAABBBCCDAA"
 def freq1 := huffFreq text1
@@ -62,7 +64,13 @@ def tree3 := buildHuff freq3
 def codes3 := huffCodeLength tree3 0
 def avg3 := avgCodeLength text3
 
-def x := codes1.length + codes2.length + codes3.length +
-         (Int.ofFloat (avg1 * 100) : Int).toNat +
-         (Int.ofFloat (avg2 * 100) : Int).toNat +
-         (Int.ofFloat (avg3 * 100) : Int).toNat
+def x := codes1.length + codes2.length + codes3.length + avg1 + avg2 + avg3
+
+-- Output results
+#eval s!"Text1: {text1}"
+#eval s!"Frequencies: {freq1}"
+#eval s!"Code lengths: {codes1}"
+#eval s!"Avg code length (x100): {avg1}"
+#eval s!"Text2 avg code length (x100): {avg2}"
+#eval s!"Text3 avg code length (x100): {avg3}"
+#eval s!"Total x: {x}"

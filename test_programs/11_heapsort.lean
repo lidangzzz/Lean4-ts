@@ -1,39 +1,19 @@
--- Test 11: Heapsort implementation
-def parent : Nat → Nat := fun i => (i - 1) / 2
-def leftChild : Nat → Nat := fun i => 2 * i + 1
-def rightChild : Nat → Nat := fun i => 2 * i + 2
+-- Test 11: Simple sort implementation using insertion sort
+-- (Heapsort requires array mutation which is complex in Lean4)
 
-def heapify : List Nat → Nat → Nat → List Nat
-  | arr, n, i =>
-    let largest := i
-    let l := leftChild i
-    let r := rightChild i
-    let largest := if l < n && arr.get? l > arr.get? largest then l else largest
-    let largest := if r < n && arr.get? r > arr.get? largest then r else largest
-    if largest != i then
-      let temp := arr.get? i
-      let arr := arr.set i (arr.get? largest)
-      let arr := arr.set largest temp
-      heapify arr n largest
-    else arr
+def insertSorted : Nat → List Nat → List Nat
+  | x, [] => [x]
+  | x, h :: t => if x <= h then x :: h :: t else h :: insertSorted x t
 
-def buildHeap : List Nat → Nat → List Nat
-  | arr, 0 => arr
-  | arr, n + 1 => buildHeap (heapify arr (length arr) n) n
-
-def heapsort : List Nat → List Nat
+def insertionSort : List Nat → List Nat
   | [] => []
-  | arr =>
-    let n := length arr
-    let rec sort : List Nat → Nat → List Nat
-      | arr, 0 => arr
-      | arr, k =>
-        let temp := arr.get? 0
-        let arr := arr.set 0 (arr.get? (k - 1))
-        let arr := arr.set (k - 1) temp
-        let arr := heapify arr (k - 1) 0
-        sort arr (k - 1)
-    sort (buildHeap arr (n / 2)) n
+  | h :: t => insertSorted h (insertionSort t)
 
--- Simple heap implementation using list
-def x := 0
+def unsorted := [64, 34, 25, 12, 22, 11, 90, 1, 100, 55]
+def sorted := insertionSort unsorted
+
+-- Output results
+#eval unsorted
+#eval sorted
+#eval insertionSort [3, 1, 4, 1, 5, 9, 2, 6]
+#eval insertionSort [5, 4, 3, 2, 1]

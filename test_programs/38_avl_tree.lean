@@ -1,22 +1,22 @@
 -- Test 38: AVL Tree implementation
-inductive AVLTree where | leaf | node : Int → AVLTree → Nat → AVLTree → AVLTree
+inductive AVLTree where | leaf | node : Nat -> AVLTree -> Nat -> AVLTree -> AVLTree
 
-def avlHeight : AVLTree → Nat
+def avlHeight : AVLTree -> Nat
   | AVLTree.leaf => 0
   | AVLTree.node h _ _ _ => h
 
 def avlNode (l : AVLTree) (v : Nat) (r : AVLTree) : AVLTree :=
-  AVLTree.node (Int.ofNat $ 1 + max (avlHeight l) (avlHeight r)) l v r
+  AVLTree.node (1 + max (avlHeight l) (avlHeight r)) l v r
 
-def avlBalance : AVLTree → Int
+def avlBalance : AVLTree -> Int
   | AVLTree.leaf => 0
   | AVLTree.node _ l _ r => Int.ofNat (avlHeight l) - Int.ofNat (avlHeight r)
 
-def rotateLeft : AVLTree → AVLTree
+def rotateLeft : AVLTree -> AVLTree
   | AVLTree.node _ a x (AVLTree.node _ b y c) => avlNode (avlNode a x b) y c
   | t => t
 
-def rotateRight : AVLTree → AVLTree
+def rotateRight : AVLTree -> AVLTree
   | AVLTree.node _ (AVLTree.node _ a x b) y c => avlNode a x (avlNode b y c)
   | t => t
 
@@ -46,26 +46,26 @@ def rebalance (l : AVLTree) (v : Nat) (r : AVLTree) : AVLTree :=
     | _ => avlNode l v r
   else avlNode l v r
 
-def avlInsert : AVLTree → Nat → AVLTree
+def avlInsert : AVLTree -> Nat -> AVLTree
   | AVLTree.leaf, x => avlNode AVLTree.leaf x AVLTree.leaf
   | AVLTree.node _ l v r, x =>
     if x < v then rebalance (avlInsert l x) v r
     else if x > v then rebalance l v (avlInsert r x)
-    else AVLTree.node (Int.ofNat $ avlHeight l) l v r
+    else AVLTree.node (avlHeight l) l v r
 
-def avlContains : AVLTree → Nat → Bool
+def avlContains : AVLTree -> Nat -> Bool
   | AVLTree.leaf, _ => false
   | AVLTree.node _ l v r, x =>
     if x < v then avlContains l x
     else if x > v then avlContains r x
     else true
 
-def avlMin : AVLTree → Option Nat
+def avlMin : AVLTree -> Option Nat
   | AVLTree.leaf => none
   | AVLTree.node _ AVLTree.leaf v _ => some v
   | AVLTree.node _ l _ _ => avlMin l
 
-def avlMax : AVLTree → Option Nat
+def avlMax : AVLTree -> Option Nat
   | AVLTree.leaf => none
   | AVLTree.node _ _ v AVLTree.leaf => some v
   | AVLTree.node _ _ _ r => avlMax r
@@ -88,3 +88,14 @@ def max2 := avlMax avl2
 def x := h1 + (if c1 then 1 else 0) + (if c2 then 1 else 0) + h2 +
          (match min1 with | some n => n | none => 0) +
          (match max1 with | some n => n | none => 0)
+
+-- Output results
+#eval h1
+#eval c1
+#eval c2
+#eval min1
+#eval max1
+#eval h2
+#eval min2
+#eval max2
+#eval x

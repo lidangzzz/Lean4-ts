@@ -22,26 +22,37 @@ def matchAlpha (s : String) : Bool :=
 def matchWhitespace (s : String) : Bool :=
   s.length > 0 && (s.get! 0).isWhitespace
 
-def matchStar (matcher : String → Bool) (s : String) : List String :=
+-- Helper to convert slice to string
+def sliceToString (s : String) (startPos : Nat) : String :=
+  String.ofList (s.toList.drop startPos)
+
+-- Get first character as string
+def takeFirst (s : String) : String :=
+  if s.length > 0 then String.ofList [s.get! 0] else ""
+
+-- Get rest of string
+def dropFirst (s : String) : String :=
+  sliceToString s 1
+
+partial def matchStar (matcher : String → Bool) (s : String) : List String :=
   let rec loop (remaining : String) (acc : List String) : List String :=
     if remaining.isEmpty then remaining :: acc
     else if matcher remaining then
-      let rest := remaining.drop 1
-      loop rest (remaining :: acc)
+      loop (dropFirst remaining) (remaining :: acc)
     else remaining :: acc
   loop s []
 
-def matchPlus (matcher : String → Bool) (s : String) : List String :=
-  if matcher s then (matchStar matcher (s.drop 1)).map (s.take 1 ++ ·) else []
+partial def matchPlus (matcher : String → Bool) (s : String) : List String :=
+  if matcher s then (matchStar matcher (dropFirst s)).map (takeFirst s ++ ·) else []
 
 def matchOptional (matcher : String → Bool) (s : String) : List String :=
-  if matcher s then [s.take 1, ""] else [""]
+  if matcher s then [takeFirst s, ""] else [""]
 
-def countMatches (pattern : String → Bool) (text : String) : Nat :=
+partial def countMatches (pattern : String → Bool) (text : String) : Nat :=
   let rec count (pos : Nat) (acc : Nat) : Nat :=
     if pos >= text.length then acc
     else
-      let substr := text.drop pos
+      let substr := sliceToString text pos
       if pattern substr then count (pos + 1) (acc + 1)
       else count (pos + 1) acc
   count 0 0
@@ -68,3 +79,10 @@ def a3 := findAllAlpha text3
 def w3 := findAllWhitespace text3
 
 def x := d1 + a1 + w1 + d2 + a2 + w2 + d3 + a3 + w3
+
+-- Output results
+#eval s!"Text1: {text1}"
+#eval s!"Digits: {d1}, Alpha: {a1}, Whitespace: {w1}"
+#eval s!"Text2 digits: {d2}, alpha: {a2}, whitespace: {w2}"
+#eval s!"Text3 digits: {d3}, alpha: {a3}, whitespace: {w3}"
+#eval s!"Total x: {x}"

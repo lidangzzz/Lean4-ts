@@ -6,8 +6,9 @@ inductive JsonValue where
   | str : String → JsonValue
   | arr : List JsonValue → JsonValue
   | obj : List (String × JsonValue) → JsonValue
+  deriving Repr
 
-def jsonFormat : JsonValue → String
+partial def jsonFormat : JsonValue → String
   | JsonValue.null => "null"
   | JsonValue.bool b => if b then "true" else "false"
   | JsonValue.num n => toString n
@@ -15,32 +16,32 @@ def jsonFormat : JsonValue → String
   | JsonValue.arr elems => "[" ++ String.intercalate ", " (elems.map jsonFormat) ++ "]"
   | JsonValue.obj fields => "{" ++ String.intercalate ", " (fields.map fun (k, v) => "\"" ++ k ++ "\": " ++ jsonFormat v) ++ "}"
 
-def jsonDepth : JsonValue → Nat
+partial def jsonDepth : JsonValue → Nat
   | JsonValue.null => 0
   | JsonValue.bool _ => 0
   | JsonValue.num _ => 0
   | JsonValue.str _ => 0
   | JsonValue.arr elems => 1 + (elems.map jsonDepth).foldl max 0
-  | JsonValue.obj fields => 1 + (fields.map (jsonDepth ∘ snd)).foldl max 0
+  | JsonValue.obj fields => 1 + (fields.map (jsonDepth ∘ (·.snd))).foldl max 0
 
-def jsonSize : JsonValue → Nat
+partial def jsonSize : JsonValue → Nat
   | JsonValue.null => 1
   | JsonValue.bool _ => 1
   | JsonValue.num _ => 1
   | JsonValue.str _ => 1
   | JsonValue.arr elems => 1 + (elems.map jsonSize).sum
-  | JsonValue.obj fields => 1 + (fields.map (jsonSize ∘ snd)).sum
+  | JsonValue.obj fields => 1 + (fields.map (jsonSize ∘ (·.snd))).sum
 
-def jsonCountStrings : JsonValue → Nat
+partial def jsonCountStrings : JsonValue → Nat
   | JsonValue.str _ => 1
   | JsonValue.arr elems => (elems.map jsonCountStrings).sum
-  | JsonValue.obj fields => (fields.map (jsonCountStrings ∘ snd)).sum
+  | JsonValue.obj fields => (fields.map (jsonCountStrings ∘ (·.snd))).sum
   | _ => 0
 
-def jsonCountNumbers : JsonValue → Nat
+partial def jsonCountNumbers : JsonValue → Nat
   | JsonValue.num _ => 1
   | JsonValue.arr elems => (elems.map jsonCountNumbers).sum
-  | JsonValue.obj fields => (fields.map (jsonCountNumbers ∘ snd)).sum
+  | JsonValue.obj fields => (fields.map (jsonCountNumbers ∘ (·.snd))).sum
   | _ => 0
 
 def j1 := JsonValue.arr [
@@ -83,3 +84,11 @@ def strCount := jsonCountStrings j3
 def numCount := jsonCountNumbers j3
 
 def x := d1 + d2 + d3 + sz1 + sz2 + sz3 + strCount + numCount
+
+-- Output results
+#eval s!"JSON 1: {s1}"
+#eval s!"JSON 2: {s2}"
+#eval s!"Depth 1: {d1}, Depth 2: {d2}, Depth 3: {d3}"
+#eval s!"Size 1: {sz1}, Size 2: {sz2}, Size 3: {sz3}"
+#eval s!"String count: {strCount}, Number count: {numCount}"
+#eval s!"Total x: {x}"
