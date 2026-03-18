@@ -125,6 +125,17 @@ function evalIdent(name: string, env: Env): Value {
     return value;
   }
 
+  // Check built-ins
+  const builtin = evalBuiltin(name, env);
+  if (builtin !== undefined) {
+    return builtin;
+  }
+
+  // Return as neutral variable
+  return vNeutral(nVar(name));
+}
+
+function evalBuiltin(name: string, env: Env): Value | undefined {
   // Built-in constants
   switch (name) {
     case 'Nat':
@@ -194,9 +205,70 @@ function evalIdent(name: string, env: Env): Value {
         }
         return vNeutral(nApp(nApp(nVar('min'), a), b));
       }));
+    case 'Array.replicate':
+    case 'Lean.Array.replicate':
+      // Array.replicate : Nat → α → Array α
+      return vLam((n: Value): Value => vLam((val: Value): Value => {
+        if (n.kind === 'VLit' && n.type === 'nat') {
+          const count = Number(n.value);
+          const elements: Value[] = [];
+          for (let i = 0; i < count; i++) {
+            elements.push(val);
+          }
+          return vArray(elements);
+        }
+        return vNeutral(nApp(nApp(nVar('Array.replicate'), n), val));
+      }));
+    case 'Array.mk':
+    case 'Lean.Array.mk':
+      // Array.mk : List α → Array α
+      return vLam((list: Value): Value => {
+        if (list.kind === 'VArray') {
+          return list;
+        }
+        if (list.kind === 'VConstr' && list.name === 'List.nil') {
+          return vArray([]);
+        }
+        // Convert List to Array
+        const elements: Value[] = [];
+        let current: Value = list;
+        while (current.kind === 'VConstr' && current.name === 'List.cons') {
+          elements.push(current.args[0]);
+          current = current.args[1];
+        }
+        return vArray(elements);
+      });
+    case 'Array.toList':
+    case 'Lean.Array.toList':
+      // Array.toList : Array α → List α
+      return vLam((arr: Value): Value => {
+        if (arr.kind === 'VArray') {
+          let list = vConstr('List.nil', []);
+          for (let i = arr.elements.length - 1; i >= 0; i--) {
+            list = vConstr('List.cons', [arr.elements[i], list]);
+          }
+          return list;
+        }
+        return vNeutral(nApp(nVar('Array.toList'), arr));
+      });
+    case 'List.toArray':
+    case 'Lean.List.toArray':
+      // List.toArray : List α → Array α
+      return vLam((list: Value): Value => {
+        if (list.kind === 'VConstr' && list.name === 'List.nil') {
+          return vArray([]);
+        }
+        const elements: Value[] = [];
+        let current: Value = list;
+        while (current.kind === 'VConstr' && current.name === 'List.cons') {
+          elements.push(current.args[0]);
+          current = current.args[1];
+        }
+        return vArray(elements);
+      });
     default:
-      // Return as neutral variable
-      return vNeutral(nVar(name));
+      // Not a built-in
+      return undefined;
   }
 }
 
@@ -341,6 +413,31 @@ function evalIf(expr: AST.IfExpr, env: Env): Value {
   }
 
   throw new EvalError('If expression without else branch evaluated to false');
+}
+
+function valuesEqual(a: Value, b: Value): boolean {
+  if (a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case 'VLit':
+      return a.type === (b as any).type && a.value === (b as any).value;
+    case 'VConstr':
+      if (a.name !== (b as any).name) return false;
+      if (a.args.length !== (b as any).args.length) return false;
+      return a.args.every((arg, i) => valuesEqual(arg, (b as any).args[i]));
+    case 'VArray':
+      if (a.elements.length !== (b as any).elements.length) return false;
+      return a.elements.every((elem, i) => valuesEqual(elem, (b as any).elements[i]));
+    case 'VNeutral':
+      return a.neutral === (b as any).neutral;
+    case 'VSort':
+      return a.level === (b as any).level;
+    case 'VLam':
+    case 'VPi':
+    case 'VClosure':
+      return false; // Functions are not comparable
+    default:
+      return false;
+  }
 }
 
 function isTrue(value: Value): boolean {
@@ -543,6 +640,11 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
     if (qualifiedValue !== undefined) {
       return qualifiedValue;
     }
+    // Also check built-in functions (like Array.replicate, List.map, etc.)
+    const builtin = evalBuiltin(qualifiedName, env);
+    if (builtin !== undefined) {
+      return builtin;
+    }
   }
 
   const obj = evaluate(expr.object, env);
@@ -551,6 +653,50 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
   if (obj.kind === 'VLit' && obj.type === 'string') {
     if (expr.field === 'length') {
       return vNat(String(obj.value).length);
+    }
+  }
+
+  // Handle Nat/Int method calls (like .land, .xor, .shiftRight, etc.)
+  if (obj.kind === 'VLit' && (obj.type === 'nat' || obj.type === 'int')) {
+    const num = Number(obj.value);
+    switch (expr.field) {
+      case 'land':  // Bitwise AND
+        return vLam((other: Value): Value => {
+          if (other.kind === 'VLit' && (other.type === 'nat' || other.type === 'int')) {
+            return vNat((num & Number(other.value)).toString());
+          }
+          return vNeutral(nApp(nApp(nVar('Nat.land'), obj), other));
+        });
+      case 'lor':   // Bitwise OR
+        return vLam((other: Value): Value => {
+          if (other.kind === 'VLit' && (other.type === 'nat' || other.type === 'int')) {
+            return vNat((num | Number(other.value)).toString());
+          }
+          return vNeutral(nApp(nApp(nVar('Nat.lor'), obj), other));
+        });
+      case 'xor':   // Bitwise XOR
+        return vLam((other: Value): Value => {
+          if (other.kind === 'VLit' && (other.type === 'nat' || other.type === 'int')) {
+            return vNat((num ^ Number(other.value)).toString());
+          }
+          return vNeutral(nApp(nApp(nVar('Nat.xor'), obj), other));
+        });
+      case 'shiftLeft':
+      case 'shiftl':
+        return vLam((n: Value): Value => {
+          if (n.kind === 'VLit' && n.type === 'nat') {
+            return vNat((num << Number(n.value)).toString());
+          }
+          return vNeutral(nApp(nApp(nVar('Nat.shiftLeft'), obj), n));
+        });
+      case 'shiftRight':
+      case 'shiftr':
+        return vLam((n: Value): Value => {
+          if (n.kind === 'VLit' && n.type === 'nat') {
+            return vNat((num >> Number(n.value)).toString());
+          }
+          return vNeutral(nApp(nApp(nVar('Nat.shiftRight'), obj), n));
+        });
     }
   }
 
@@ -724,6 +870,77 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
         }
         return vNeutral(nApp(nApp(nVar('List.all'), list), p));
       });
+    }
+    if (expr.field === 'contains') {
+      const list = obj;
+      return vLam((elem: Value) => {
+        if (list.kind === 'VArray') {
+          for (const e of list.elements) {
+            if (valuesEqual(e, elem)) {
+              return vBool(true);
+            }
+          }
+          return vBool(false);
+        }
+        return vNeutral(nApp(nApp(nVar('List.contains'), list), elem));
+      });
+    }
+    if (expr.field === 'find?') {
+      const list = obj;
+      return vLam((p: Value) => {
+        if (list.kind === 'VArray') {
+          for (const elem of list.elements) {
+            const result = applyValue(p, elem);
+            if (result.kind === 'VLit' && result.type === 'bool' && result.value === true) {
+              return vConstr('some', [elem]);
+            }
+          }
+          return vConstr('none', []);
+        }
+        return vNeutral(nApp(nApp(nVar('List.find?'), list), p));
+      });
+    }
+    if (expr.field === 'getD' || expr.field === 'get?') {
+      const list = obj;
+      return vLam((idx: Value) => vLam((defaultVal: Value) => {
+        if (list.kind === 'VArray' && idx.kind === 'VLit') {
+          const i = Number(idx.value);
+          if (i >= 0 && i < list.elements.length) {
+            return list.elements[i];
+          }
+          return defaultVal;
+        }
+        return vNeutral(nApp(nApp(nApp(nVar('List.getD'), list), idx), defaultVal));
+      }));
+    }
+    if (expr.field === 'set') {
+      const list = obj;
+      return vLam((idx: Value) => vLam((val: Value) => {
+        if (list.kind === 'VArray' && idx.kind === 'VLit') {
+          const i = Number(idx.value);
+          if (i >= 0 && i < list.elements.length) {
+            const newArr = [...list.elements];
+            newArr[i] = val;
+            return vArray(newArr);
+          }
+        }
+        return vNeutral(nApp(nApp(nApp(nVar('Array.set'), list), idx), val));
+      }));
+    }
+    if (expr.field === 'set!') {
+      // Same as set for now
+      const list = obj;
+      return vLam((idx: Value) => vLam((val: Value) => {
+        if (list.kind === 'VArray' && idx.kind === 'VLit') {
+          const i = Number(idx.value);
+          if (i >= 0 && i < list.elements.length) {
+            const newArr = [...list.elements];
+            newArr[i] = val;
+            return vArray(newArr);
+          }
+        }
+        return vNeutral(nApp(nApp(nApp(nVar('Array.set!'), list), idx), val));
+      }));
     }
     if (expr.field === 'sum') {
       if (obj.kind === 'VArray') {
