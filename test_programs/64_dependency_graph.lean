@@ -9,15 +9,15 @@ def graphNodes (g : Graph) : List Nat :=
   nodes.eraseDups
 
 def graphAdj (g : Graph) (node : Nat) : List Nat :=
-  (graphEdges g).filter (fun (a, _) => a = node) |>.map snd
+  (graphEdges g).filter (fun (a, _) => a = node) |>.map (·.2)
 
 def graphPredecessors (g : Graph) (node : Nat) : List Nat :=
-  (graphEdges g).filter (fun (_, b) => b = node) |>.map fst
+  (graphEdges g).filter (fun (_, b) => b = node) |>.map (·.1)
 
 def graphInDegree (g : Graph) (node : Nat) : Nat :=
   graphPredecessors g node |>.length
 
-def topoSort (g : Graph) : List Nat :=
+partial def topoSort (g : Graph) : List Nat :=
   let nodes := graphNodes g
   let inDegrees := nodes.map (fun n => (n, graphInDegree g n))
   let rec sort (remaining : List (Nat × Nat)) (sorted : List Nat) (queue : List Nat) : List Nat :=
@@ -28,14 +28,14 @@ def topoSort (g : Graph) : List Nat :=
       let sorted' := n :: sorted
       let adj := graphAdj g n
       let newQueue := rest ++ (adj.filter (fun a =>
-        let currentDeg := (remaining.find? (fun (node, _) => node = a)).getD (a, 0) |>.snd
+        let currentDeg := ((remaining.find? (fun (node, _) => node = a)).getD (a, 0)).2
         currentDeg = 1))
       sort newRemaining sorted' newQueue
-  let startQueue := inDegrees.filter (fun (_, deg) => deg = 0) |>.map fst
+  let startQueue := inDegrees.filter (fun (_, deg) => deg = 0) |>.map (·.1)
   sort inDegrees [] startQueue
 
 def hasCycle (g : Graph) : Bool :=
-  topoSort g |>.length < graphNodes g |>.length
+  (topoSort g).length < (graphNodes g).length
 
 def graph1 := Graph.mk [(1, 2), (2, 3), (3, 4), (4, 5)]
 def topo1 := topoSort graph1
@@ -59,3 +59,13 @@ def cycle4 := hasCycle graph4
 def x := topo1.length + topo2.length + topo3.length + topo4.length +
          (if cycle1 then 1 else 0) + (if cycle2 then 1 else 0) +
          (if cycle3 then 1 else 0) + (if cycle4 then 1 else 0)
+
+#eval s!"Graph1 topo: {topo1}"
+#eval s!"Graph1 has cycle: {cycle1}"
+#eval s!"Graph2 topo: {topo2}"
+#eval s!"Graph2 has cycle: {cycle2}"
+#eval s!"Graph3 topo: {topo3}"
+#eval s!"Graph3 has cycle: {cycle3}"
+#eval s!"Graph4 topo: {topo4}"
+#eval s!"Graph4 has cycle: {cycle4}"
+#eval s!"Total x: {x}"

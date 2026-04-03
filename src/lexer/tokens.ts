@@ -5,6 +5,7 @@ export enum TokenType {
   NUMBER = 'NUMBER',
   STRING = 'STRING',
   CHAR = 'CHAR',
+  INTERPOLATED_STRING = 'INTERPOLATED_STRING',  // s!"..." with {expr}
 
   // Identifiers and keywords
   IDENT = 'IDENT',
@@ -46,6 +47,7 @@ export enum TokenType {
   UNIVERSAL = 'UNIVERSAL',
   PRIVATE = 'PRIVATE',
   PROTECTED = 'PROTECTED',
+  PARTIAL = 'PARTIAL',
   MUT = 'MUT',
   RETURN = 'RETURN',
   TERMINATION_BY = 'TERMINATION_BY',
@@ -81,6 +83,8 @@ export enum TokenType {
   RBRACKET = 'RBRACKET',
   LANGLE = 'LANGLE',
   RANGLE = 'RANGLE',
+  LTUPLE = 'LTUPLE',       // ⟨ (U+27E8) anonymous constructor
+  RTUPLE = 'RTUPLE',       // ⟩ (U+27E9) anonymous constructor
   LDQUOTE = 'LDQUOTE',     // «
   RDQUOTE = 'RDQUOTE',     // »
 
@@ -168,6 +172,7 @@ export const KEYWORDS: Record<string, TokenType> = {
   'universe': TokenType.UNIVERSAL,
   'private': TokenType.PRIVATE,
   'protected': TokenType.PROTECTED,
+  'partial': TokenType.PARTIAL,
   'mut': TokenType.MUT,
   'return': TokenType.RETURN,
   'termination_by': TokenType.TERMINATION_BY,

@@ -39,7 +39,9 @@ export type Expr =
   | ExistsExpr
   | FunExpr
   | TupleExpr
-  | StructLitExpr;
+  | StructLitExpr
+  | AnonCtorExpr
+  | InterpolatedStringExpr;
 
 export interface LiteralExpr extends BaseNode {
   kind: 'literal';
@@ -92,6 +94,7 @@ export interface IfExpr extends BaseNode {
   cond: Expr;
   thenBranch: Expr;
   elseBranch?: Expr;
+  hypothesis?: string;  // For dependent if: if h : cond then ...
 }
 
 export interface MatchExpr extends BaseNode {
@@ -245,6 +248,16 @@ export interface TupleExpr extends BaseNode {
 export interface StructLitExpr extends BaseNode {
   kind: 'structLit';
   fields: { name: string; value: Expr }[];
+}
+
+export interface AnonCtorExpr extends BaseNode {
+  kind: 'anonCtor';
+  elements: Expr[];
+}
+
+export interface InterpolatedStringExpr extends BaseNode {
+  kind: 'interpolatedString';
+  parts: Array<{type: 'text', value: string} | {type: 'expr', value: Expr}>;
 }
 
 export type BinaryOp =
@@ -486,8 +499,8 @@ export function let_(name: string, value: Expr, body: Expr | undefined, type?: E
   return { kind: 'let', name, type, value, body, recursive, loc };
 }
 
-export function if_(cond: Expr, thenBranch: Expr, elseBranch: Expr | undefined, loc?: SourceLocation): IfExpr {
-  return { kind: 'if', cond, thenBranch, elseBranch, loc };
+export function if_(cond: Expr, thenBranch: Expr, elseBranch: Expr | undefined, loc?: SourceLocation, hypothesis?: string): IfExpr {
+  return { kind: 'if', cond, thenBranch, elseBranch, hypothesis, loc };
 }
 
 export function match_(scrutinee: Expr, cases: MatchCase[], loc?: SourceLocation): MatchExpr {

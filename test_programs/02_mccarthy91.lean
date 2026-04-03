@@ -7,3 +7,9 @@ def m91_100 := mccarthy91 100
 def m91_101 := mccarthy91 101
 def m91_50 := mccarthy91 50
 def x := m91_87 + m91_100 + m91_101 + m91_50
+
+#eval m91_87
+#eval m91_100
+#eval m91_101
+#eval m91_50
+#eval x

@@ -18,3 +18,7 @@ def incStep := fun x => x + 1
 def countUp := ana incStep 10 0
 
 def x := factorial + countUp
+
+#eval factorial
+#eval countUp
+#eval x

@@ -73,3 +73,10 @@ def x := (match result1 with | some _ => 1 | none => 0) +
          (match result2 with | some _ => 1 | none => 0) +
          (match result3 with | some _ => 1 | none => 0) +
          all1.length + all3.length
+
+#eval (match result1 with | some _ => 1 | none => 0)
+#eval (match result2 with | some _ => 1 | none => 0)
+#eval (match result3 with | some _ => 1 | none => 0)
+#eval all1.length
+#eval all3.length
+#eval x

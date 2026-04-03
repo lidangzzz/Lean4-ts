@@ -60,17 +60,10 @@ export class Lean4Compiler {
 
       for (const [name, value] of results) {
         values.set(name, value);
-
-        // Format output for def declarations
-        const decl = module.decls.find((d) => d.kind === 'def' && d.name === name);
-        if (decl) {
-          const defDecl = decl as DefDecl;
-          output.push(`${name} = ${formatValue(value)}`);
-        }
       }
 
-      // Find and evaluate #eval commands
-      const evalOutputs = this.processEvalCommands(source);
+      // Only output #eval commands (matching original Lean4 compiler behavior)
+      const evalOutputs = this.processEvalCommands(source, results);
       output.push(...evalOutputs);
 
       return {
@@ -90,7 +83,7 @@ export class Lean4Compiler {
     }
   }
 
-  private processEvalCommands(source: string): string[] {
+  private processEvalCommands(source: string, env: Env): string[] {
     const outputs: string[] = [];
     const lines = source.split('\n');
 
@@ -104,7 +97,6 @@ export class Lean4Compiler {
           // Parse and evaluate the expression
           const fakeModule = `def __eval_expr := ${expr}`;
           const module = parse(fakeModule);
-          const env = this.buildPrelude();
           const results = evaluateModule(module, env);
           const value = results.get('__eval_expr');
           if (value) {
@@ -133,7 +125,6 @@ export class Lean4Compiler {
         try {
           const fakeModule = `def __reduce_expr := ${expr}`;
           const module = parse(fakeModule);
-          const env = this.buildPrelude();
           const results = evaluateModule(module, env);
           const value = results.get('__reduce_expr');
           if (value) {
@@ -202,6 +193,63 @@ export class Lean4Compiler {
         return vInt(Number(a.value) % Number(b.value));
       }
       return vNeutral({ kind: 'NVar', name: 'Nat.mod' });
+    })));
+
+    // Int operations
+    env.set('Int.ofNat', vLam((n: Value) => {
+      if (n.kind === 'VLit' && (n.type === 'nat' || n.type === 'int')) {
+        return vInt(Number(n.value));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.ofNat' });
+    }));
+
+    env.set('Int.toNat', vLam((n: Value) => {
+      if (n.kind === 'VLit' && (n.type === 'nat' || n.type === 'int')) {
+        return vNat(Math.abs(Number(n.value)).toString());
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.toNat' });
+    }));
+
+    env.set('Int.neg', vLam((n: Value) => {
+      if (n.kind === 'VLit' && (n.type === 'nat' || n.type === 'int')) {
+        return vInt(-Number(n.value));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.neg' });
+    }));
+
+    env.set('Int.add', vLam((a: Value) => vLam((b: Value) => {
+      if (a.kind === 'VLit' && b.kind === 'VLit') {
+        return vInt(Number(a.value) + Number(b.value));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.add' });
+    })));
+
+    env.set('Int.sub', vLam((a: Value) => vLam((b: Value) => {
+      if (a.kind === 'VLit' && b.kind === 'VLit') {
+        return vInt(Number(a.value) - Number(b.value));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.sub' });
+    })));
+
+    env.set('Int.mul', vLam((a: Value) => vLam((b: Value) => {
+      if (a.kind === 'VLit' && b.kind === 'VLit') {
+        return vInt(Number(a.value) * Number(b.value));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.mul' });
+    })));
+
+    env.set('Int.div', vLam((a: Value) => vLam((b: Value) => {
+      if (a.kind === 'VLit' && b.kind === 'VLit' && Number(b.value) !== 0) {
+        return vInt(Math.trunc(Number(a.value) / Number(b.value)));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.div' });
+    })));
+
+    env.set('Int.mod', vLam((a: Value) => vLam((b: Value) => {
+      if (a.kind === 'VLit' && b.kind === 'VLit' && Number(b.value) !== 0) {
+        return vInt(Number(a.value) % Number(b.value));
+      }
+      return vNeutral({ kind: 'NVar', name: 'Int.mod' });
     })));
 
     // List operations

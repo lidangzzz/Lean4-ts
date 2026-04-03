@@ -16,3 +16,8 @@ def prefixSums := scanl (fun a b => a + b) 0 nums
 def suffixSums := scanr (fun a b => a + b) 0 nums
 def sumPrefix := List.foldl (fun a b => a + b) 0 prefixSums
 def x := sumPrefix
+
+#eval prefixSums
+#eval suffixSums
+#eval sumPrefix
+#eval x

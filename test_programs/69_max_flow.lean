@@ -1,13 +1,13 @@
 -- Test 69: Maximum Flow (Ford-Fulkerson with DFS)
-def bfsPath (n : Nat) (capacity : Array (Array Nat)) (flow : Array (Array Nat)) (src sink : Nat) : Option (List Nat) :=
-  let visited := Array.mkArray n false |>.set! src true
-  let parent := Array.mkArray n n
+partial def bfsPath (n : Nat) (capacity : Array (Array Nat)) (flow : Array (Array Nat)) (src sink : Nat) : Option (List Nat) :=
+  let visited := (List.replicate n false).toArray |>.set! src true
+  let parent := (List.replicate n n).toArray
   let rec search (queue : List Nat) (vis : Array Bool) (par : Array Nat) : Array Nat :=
     match queue with
     | [] => par
     | u :: rest =>
       let neighbors := (List.range n).filter (fun v =>
-        !vis.get! v && (capacity.get! u).get! v > (flow.get! u).get! v)
+        !vis[v]! && capacity[u]![v]! > flow[u]![v]!)
       if neighbors.isEmpty then search rest vis par
       else if neighbors.contains sink then
         par.set! sink u
@@ -17,10 +17,10 @@ def bfsPath (n : Nat) (capacity : Array (Array Nat)) (flow : Array (Array Nat)) 
         ) (vis, par)
         search (rest ++ neighbors) vis' par'
   let parent' := search [src] visited parent
-  if parent'.get! sink < n then
+  if parent'[sink]! < n then
     let rec buildPath (current : Nat) (path : List Nat) : List Nat :=
       if current = src then src :: path
-      else buildPath (parent'.get! current) (current :: path)
+      else buildPath (parent'[current]!) (current :: path)
     some (buildPath sink [])
   else none
 
@@ -29,23 +29,23 @@ def minCapacity (path : List Nat) (capacity flow : Array (Array Nat)) : Nat :=
   | [] => 0
   | [_] => 0
   | u :: v :: rest =>
-    let cap := (capacity.get! u).get! v - (flow.get! u).get! v
+    let cap := capacity[u]![v]! - flow[u]![v]!
     min cap (minCapacity (v :: rest) capacity flow)
 
-def augmentFlow (path : List Nat) (amount : Nat) (flow : Array (Array Nat)) : Array (Array Nat) :=
+partial def augmentFlow (path : List Nat) (amount : Nat) (flow : Array (Array Nat)) : Array (Array Nat) :=
   match path with
   | [] | [_] => flow
   | u :: v :: rest =>
-    let fu := flow.get! u
-    let fv := flow.get! v
-    let fu' := fu.set! v (fu.get! v + amount)
-    let fv' := fv.set! u (fv.get! u - amount)
+    let fu := flow[u]!
+    let fv := flow[v]!
+    let fu' := fu.set! v (fu[v]! + amount)
+    let fv' := fv.set! u (fv[u]! - amount)
     let flow' := flow.set! u fu'
     let flow'' := flow'.set! v fv'
     augmentFlow (v :: rest) amount flow''
 
-def maxFlow (n : Nat) (capacity : Array (Array Nat)) (src sink : Nat) : Nat :=
-  let zeroFlow := Array.mkArray n (Array.mkArray n 0)
+partial def maxFlow (n : Nat) (capacity : Array (Array Nat)) (src sink : Nat) : Nat :=
+  let zeroFlow := (List.replicate n ((List.replicate n 0).toArray)).toArray
   let rec findAugmenting (flow : Array (Array Nat)) (total : Nat) : Nat :=
     match bfsPath n capacity flow src sink with
     | some path =>
@@ -75,3 +75,7 @@ def cap2 : Array (Array Nat) := #[
 def mf2 := maxFlow 5 cap2 0 4
 
 def x := mf1 + mf2
+
+#eval s!"Max flow 1: {mf1}"
+#eval s!"Max flow 2: {mf2}"
+#eval s!"Total x: {x}"

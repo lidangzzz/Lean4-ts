@@ -7,7 +7,7 @@ import {
   vNat, vInt, vFloat, vString, vChar, vBool,
   vClosure, vNeutral, vConstr, vLam, vArray, vSort, vStruct,
   nVar, nApp, nProj,
-  formatValue
+  formatValue, formatValueRaw
 } from '../types';
 
 export class EvalError extends Error {
@@ -88,6 +88,9 @@ export function evaluate(expr: AST.Expr, env: Env): Value {
     case 'structLit':
       return evalStructLit(expr, env);
 
+    case 'interpolatedString':
+      return evalInterpolatedString(expr as AST.InterpolatedStringExpr, env);
+
     case 'quote':
     case 'antiquot':
     case 'macro':
@@ -158,6 +161,46 @@ function evalBuiltin(name: string, env: Env): Value | undefined {
       return vConstr('none', []);
     case 'some':
       return vLam((x) => vConstr('some', [x]));
+    case 's!':
+      // String interpolation macro: s!"Hello {name}" => "Hello value"
+      return vLam((template) => {
+        if (template.kind === 'VLit' && template.type === 'string') {
+          const templateStr = String(template.value);
+          // Replace {expr} placeholders with their evaluated values from env
+          const result = templateStr.replace(/\{([^}]+)\}/g, (match, expr) => {
+            try {
+              // Try to evaluate the expression in the current environment
+              const value = env.get(expr.trim());
+              if (value) {
+                return formatValue(value);
+              }
+              // If not found in env, return the match as-is
+              return match;
+            } catch (e) {
+              return match;
+            }
+          });
+          return vString(result);
+        }
+        return vNeutral(nApp(nVar('s!'), template));
+      });
+    case 'Char.toNat':
+      // Char.toNat : Char → Nat
+      return vLam((c: Value) => {
+        if (c.kind === 'VLit' && c.type === 'char') {
+          return vNat(String(c.value).charCodeAt(0));
+        }
+        return vNeutral(nApp(nVar('Char.toNat'), c));
+      });
+    case 'Char.ofNat':
+      // Char.ofNat : Nat → Char
+      return vLam((n: Value) => {
+        if (n.kind === 'VLit' && (n.type === 'nat' || n.type === 'int')) {
+          const code = Number(n.value);
+          return vChar(String.fromCharCode(code));
+        }
+        return vNeutral(nApp(nVar('Char.ofNat'), n));
+      });
     case 'nil':
       return vConstr('nil', []);
     case 'cons':
@@ -251,6 +294,21 @@ function evalBuiltin(name: string, env: Env): Value | undefined {
         }
         return vNeutral(nApp(nVar('Array.toList'), arr));
       });
+    case 'Array.ofList':
+    case 'Lean.Array.ofList':
+      // Array.ofList : List α → Array α
+      return vLam((list: Value): Value => {
+        if (list.kind === 'VConstr' && list.name === 'List.nil') {
+          return vArray([]);
+        }
+        const elements: Value[] = [];
+        let current: Value = list;
+        while (current.kind === 'VConstr' && (current.name === 'List.cons' || current.name === 'cons')) {
+          elements.push(current.args[0]);
+          current = current.args[1];
+        }
+        return vArray(elements);
+      });
     case 'List.toArray':
     case 'Lean.List.toArray':
       // List.toArray : List α → Array α
@@ -266,6 +324,61 @@ function evalBuiltin(name: string, env: Env): Value | undefined {
         }
         return vArray(elements);
       });
+    case 'String.ofList':
+    case 'Lean.String.ofList':
+      // String.ofList : List Char → String
+      return vLam((list: Value) => {
+        if (list.kind === 'VArray') {
+          const chars = list.elements.map(e => {
+            if (e.kind === 'VLit' && e.type === 'char') {
+              return String(e.value);
+            }
+            return '';
+          }).join('');
+          return vString(chars);
+        }
+        // Handle constructor-based list
+        if (list.kind === 'VConstr') {
+          const chars: string[] = [];
+          let current: Value = list;
+          while (current.kind === 'VConstr' && (current.name === 'List.cons' || current.name === 'cons')) {
+            if (current.args[0].kind === 'VLit' && current.args[0].type === 'char') {
+              chars.push(String(current.args[0].value));
+            }
+            current = current.args[1];
+          }
+          return vString(chars.join(''));
+        }
+        return vNeutral(nApp(nVar('String.ofList'), list));
+      });
+    case 'List.range':
+    case 'Lean.List.range':
+      // List.range : Nat → List Nat
+      return vLam((n: Value) => {
+        if (n.kind === 'VLit' && n.type === 'nat') {
+          const count = Number(n.value);
+          const elements: Value[] = [];
+          for (let i = 0; i < count; i++) {
+            elements.push(vNat(i));
+          }
+          return vArray(elements);
+        }
+        return vNeutral(nApp(nVar('List.range'), n));
+      });
+    case 'List.replicate':
+    case 'Lean.List.replicate':
+      // List.replicate : Nat → α → List α
+      return vLam((n: Value) => vLam((val: Value) => {
+        if (n.kind === 'VLit' && n.type === 'nat') {
+          const count = Number(n.value);
+          const elements: Value[] = [];
+          for (let i = 0; i < count; i++) {
+            elements.push(val);
+          }
+          return vArray(elements);
+        }
+        return vNeutral(nApp(nApp(nVar('List.replicate'), n), val));
+      }));
     default:
       // Not a built-in
       return undefined;
@@ -493,18 +606,18 @@ function matchPattern(pattern: AST.Pattern, value: Value, env: Env): Env | null 
 
     case 'ctor':
       // Handle nil pattern matching against empty array
-      if (pattern.name === 'nil' && pattern.args.length === 0) {
+      if ((pattern.name === 'nil' || pattern.name === 'List.nil') && pattern.args.length === 0) {
         if (value.kind === 'VArray' && value.elements.length === 0) {
           return env;
         }
-        if (value.kind === 'VConstr' && value.name === 'nil' && value.args.length === 0) {
+        if (value.kind === 'VConstr' && (value.name === 'nil' || value.name === 'List.nil') && value.args.length === 0) {
           return env;
         }
         return null;
       }
 
       // Handle cons pattern matching against array
-      if (pattern.name === 'cons' && pattern.args.length === 2) {
+      if ((pattern.name === 'cons' || pattern.name === 'List.cons') && pattern.args.length === 2) {
         if (value.kind === 'VArray' && value.elements.length > 0) {
           // Match head and tail
           const headResult = matchPattern(pattern.args[0], value.elements[0], env);
@@ -513,7 +626,7 @@ function matchPattern(pattern: AST.Pattern, value: Value, env: Env): Env | null 
           const tailValue = vArray(value.elements.slice(1));
           return matchPattern(pattern.args[1], tailValue, headResult);
         }
-        if (value.kind === 'VConstr' && value.name === 'cons' && value.args.length === 2) {
+        if (value.kind === 'VConstr' && (value.name === 'cons' || value.name === 'List.cons') && value.args.length === 2) {
           // Match against cons constructor
           let currentEnv = env;
           for (let i = 0; i < pattern.args.length; i++) {
@@ -526,37 +639,69 @@ function matchPattern(pattern: AST.Pattern, value: Value, env: Env): Env | null 
         return null;
       }
 
-      // General constructor matching
-      if (value.kind === 'VConstr' && value.name === pattern.name) {
-        if (value.args.length !== pattern.args.length) {
-          return null;
-        }
+      // General constructor matching - handle qualified names (e.g., UTerm.var matches UTerm.var or var)
+      if (value.kind === 'VConstr') {
+        const patternMatches =
+          value.name === pattern.name ||
+          value.name.endsWith('.' + pattern.name) ||
+          pattern.name.endsWith('.' + value.name) ||
+          (pattern.name.includes('.') && value.name === pattern.name.split('.').pop()) ||
+          (value.name.includes('.') && pattern.name === value.name.split('.').pop());
 
-        let currentEnv = env;
-        for (let i = 0; i < pattern.args.length; i++) {
-          const result = matchPattern(pattern.args[i], value.args[i], currentEnv);
-          if (result === null) return null;
-          currentEnv = result;
+        if (patternMatches && value.args.length === pattern.args.length) {
+          let currentEnv = env;
+          for (let i = 0; i < pattern.args.length; i++) {
+            const result = matchPattern(pattern.args[i], value.args[i], currentEnv);
+            if (result === null) return null;
+            currentEnv = result;
+          }
+          return currentEnv;
         }
-        return currentEnv;
       }
       return null;
 
     case 'tuple':
+      // Handle tuple pattern matching against nested pair structure
+      if (pattern.elements.length === 2) {
+        // Simple pair - match directly against Pair.mk or array
+        if (value.kind === 'VConstr' && (value.name === 'Pair.mk' || value.name === 'Prod.mk') && value.args.length === 2) {
+          let currentEnv = env;
+          for (let i = 0; i < pattern.elements.length; i++) {
+            const result = matchPattern(pattern.elements[i], value.args[i], currentEnv);
+            if (result === null) return null;
+            currentEnv = result;
+          }
+          return currentEnv;
+        }
+        if (value.kind === 'VArray' && value.elements.length === 2) {
+          let currentEnv = env;
+          for (let i = 0; i < pattern.elements.length; i++) {
+            const result = matchPattern(pattern.elements[i], value.elements[i], currentEnv);
+            if (result === null) return null;
+            currentEnv = result;
+          }
+          return currentEnv;
+        }
+      }
+      // Handle n-tuple patterns (n > 2) against nested pairs
+      // (a, b, c) pattern should match Pair.mk(a, Pair.mk(b, c)) value
+      if (pattern.elements.length > 2 && value.kind === 'VConstr' && (value.name === 'Pair.mk' || value.name === 'Prod.mk')) {
+        // Match first element against first pattern
+        const firstResult = matchPattern(pattern.elements[0], value.args[0], env);
+        if (firstResult === null) return null;
+        // Recursively match rest of patterns against rest of nested pairs
+        const restPattern: AST.TuplePattern = {
+          kind: 'tuple',
+          elements: pattern.elements.slice(1),
+          loc: pattern.loc
+        };
+        return matchPattern(restPattern, value.args[1], firstResult);
+      }
+      // Handle flat array matching
       if (value.kind === 'VArray' && value.elements.length === pattern.elements.length) {
         let currentEnv = env;
         for (let i = 0; i < pattern.elements.length; i++) {
           const result = matchPattern(pattern.elements[i], value.elements[i], currentEnv);
-          if (result === null) return null;
-          currentEnv = result;
-        }
-        return currentEnv;
-      }
-      // Also match against VConstr for tuples stored as Pair.mk
-      if (value.kind === 'VConstr' && value.args.length === pattern.elements.length) {
-        let currentEnv = env;
-        for (let i = 0; i < pattern.elements.length; i++) {
-          const result = matchPattern(pattern.elements[i], value.args[i], currentEnv);
           if (result === null) return null;
           currentEnv = result;
         }
@@ -649,10 +794,193 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
 
   const obj = evaluate(expr.object, env);
 
+  // Handle numeric field access on tuples (p.1, p.2, etc.)
+  const fieldNum = parseInt(expr.field, 10);
+  if (!isNaN(fieldNum) && fieldNum >= 1) {
+    const index = fieldNum - 1; // Convert 1-based to 0-based
+    if (obj.kind === 'VConstr') {
+      // Handle Pair.mk and other tuple constructors
+      if ((obj.name === 'Pair.mk' || obj.name.startsWith('Prod.mk')) && index < obj.args.length) {
+        return obj.args[index];
+      }
+      // Handle anonymous tuples stored as constructor with numeric name
+      if (index < obj.args.length) {
+        return obj.args[index];
+      }
+    }
+    if (obj.kind === 'VArray' && index < obj.elements.length) {
+      return obj.elements[index];
+    }
+    if (obj.kind === 'VNeutral') {
+      return vNeutral(nProj(obj.neutral, index));
+    }
+  }
+
   // Handle string field access (like .length)
   if (obj.kind === 'VLit' && obj.type === 'string') {
+    const str = String(obj.value);
     if (expr.field === 'length') {
-      return vNat(String(obj.value).length);
+      return vNat(str.length);
+    }
+    // String.toList : String -> List Char
+    if (expr.field === 'toList') {
+      const chars = str.split('').map(c => vChar(c));
+      return vArray(chars);
+    }
+    // String.drop : String -> Nat -> String
+    if (expr.field === 'drop') {
+      return vLam((n: Value) => {
+        if (n.kind === 'VLit' && n.type === 'nat') {
+          return vString(str.slice(Number(n.value)));
+        }
+        return vNeutral(nApp(nApp(nVar('String.drop'), obj), n));
+      });
+    }
+    // String.take : String -> Nat -> String
+    if (expr.field === 'take') {
+      return vLam((n: Value) => {
+        if (n.kind === 'VLit' && n.type === 'nat') {
+          return vString(str.slice(0, Number(n.value)));
+        }
+        return vNeutral(nApp(nApp(nVar('String.take'), obj), n));
+      });
+    }
+    // String.contains : String -> Char -> Bool
+    if (expr.field === 'contains') {
+      return vLam((c: Value) => {
+        if (c.kind === 'VLit' && c.type === 'char') {
+          return vBool(str.includes(String(c.value)));
+        }
+        return vNeutral(nApp(nApp(nVar('String.contains'), obj), c));
+      });
+    }
+    // String.front : String -> Char (first character)
+    if (expr.field === 'front') {
+      if (str.length > 0) {
+        return vChar(str[0]);
+      }
+      return vNeutral(nApp(nVar('String.front'), obj));
+    }
+    // String.back : String -> Char (last character)
+    if (expr.field === 'back') {
+      if (str.length > 0) {
+        return vChar(str[str.length - 1]);
+      }
+      return vNeutral(nApp(nVar('String.back'), obj));
+    }
+    // String.isEmpty : String -> Bool
+    if (expr.field === 'isEmpty') {
+      return vBool(str.length === 0);
+    }
+    // String.pos : String -> Nat -> Char (get character at position)
+    if (expr.field === 'get' || expr.field === 'get?') {
+      return vLam((idx: Value) => {
+        if (idx.kind === 'VLit' && (idx.type === 'nat' || idx.type === 'int')) {
+          const i = Number(idx.value);
+          if (i >= 0 && i < str.length) {
+            return vConstr('some', [vChar(str[i])]);
+          }
+          return vConstr('none', []);
+        }
+        return vNeutral(nApp(nApp(nVar('String.get'), obj), idx));
+      });
+    }
+    // String.foldl : (α → Char → α) → α → String → α
+    if (expr.field === 'foldl') {
+      return vLam((f: Value) => vLam((init: Value) => {
+        let acc = init;
+        for (let i = 0; i < str.length; i++) {
+          acc = applyValue(applyValue(f, acc), vChar(str[i]));
+        }
+        return acc;
+      }));
+    }
+    // String.toString : String → String (identity)
+    if (expr.field === 'toString') {
+      return obj;
+    }
+    // String.data : String -> List Char (same as toList)
+    if (expr.field === 'data') {
+      const chars = str.split('').map(c => vChar(c));
+      return vArray(chars);
+    }
+    // String.get! : String -> Nat -> Char (unsafe get character at position)
+    if (expr.field === 'get!') {
+      return vLam((idx: Value) => {
+        if (idx.kind === 'VLit' && (idx.type === 'nat' || idx.type === 'int')) {
+          const i = Number(idx.value);
+          if (i >= 0 && i < str.length) {
+            return vChar(str[i]);
+          }
+          throw new EvalError(`String index out of bounds: ${i}`);
+        }
+        return vNeutral(nApp(nApp(nVar('String.get!'), obj), idx));
+      });
+    }
+    // String.startsWith : String -> Bool
+    if (expr.field === 'startsWith') {
+      return vLam((prefix: Value) => {
+        if (prefix.kind === 'VLit' && prefix.type === 'string') {
+          return vBool(str.startsWith(String(prefix.value)));
+        }
+        return vNeutral(nApp(nApp(nVar('String.startsWith'), obj), prefix));
+      });
+    }
+    // String.intercalate : String -> List String -> String
+    // This is a static method, but we can handle it on a string instance
+    if (expr.field === 'intercalate') {
+      const sep = str;
+      return vLam((list: Value) => {
+        if (list.kind === 'VArray') {
+          const strs = list.elements.map(e => {
+            if (e.kind === 'VLit' && e.type === 'string') {
+              return String(e.value);
+            }
+            return formatValue(e);
+          });
+          return vString(strs.join(sep));
+        }
+        // Handle constructor-based list
+        if (list.kind === 'VConstr') {
+          const strs: string[] = [];
+          let current: Value = list;
+          while (current.kind === 'VConstr' && (current.name === 'List.cons' || current.name === 'cons')) {
+            if (current.args[0].kind === 'VLit' && current.args[0].type === 'string') {
+              strs.push(String(current.args[0].value));
+            } else {
+              strs.push(formatValue(current.args[0]));
+            }
+            current = current.args[1];
+          }
+          return vString(strs.join(sep));
+        }
+        return vNeutral(nApp(nApp(nVar('String.intercalate'), obj), list));
+      });
+    }
+  }
+
+  // Handle Char field access
+  if (obj.kind === 'VLit' && obj.type === 'char') {
+    const char = String(obj.value);
+    if (expr.field === 'toNat' || expr.field === 'val') {
+      return vNat(char.charCodeAt(0));
+    }
+    if (expr.field === 'toString') {
+      return vString(char);
+    }
+    if (expr.field === 'isDigit') {
+      return vBool(char >= '0' && char <= '9');
+    }
+    if (expr.field === 'isAlpha') {
+      const c = char.toLowerCase();
+      return vBool(c >= 'a' && c <= 'z');
+    }
+    if (expr.field === 'isAlphanum') {
+      const c = char.toLowerCase();
+      return vBool((c >= 'a' && c <= 'z') || (char >= '0' && char <= '9'));
+    }
+    if (expr.field === 'isWhitespace') {
+      return vBool(char === ' ' || char === '\t' || char === '\n' || char === '\r');
     }
   }
 
@@ -697,6 +1025,12 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
           }
           return vNeutral(nApp(nApp(nVar('Nat.shiftRight'), obj), n));
         });
+      case 'toNat':
+        // Int.toNat - convert to Nat (takes absolute value or saturates)
+        if (obj.type === 'int') {
+          return vNat(Math.max(0, num).toString());
+        }
+        return obj;
     }
   }
 
@@ -732,6 +1066,181 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
       // Try numeric index
       if (index >= 0 && index < obj.fields.length) {
         return obj.fields[index].value;
+      }
+    }
+  }
+
+  // Handle Option type methods (some/none)
+  if (obj.kind === 'VConstr' && (obj.name === 'some' || obj.name === 'none' || obj.name === 'Option.some' || obj.name === 'Option.none')) {
+    if (expr.field === 'map') {
+      return vLam((f: Value) => {
+        if (obj.name === 'some' || obj.name === 'Option.some') {
+          if (obj.args.length === 1) {
+            const mapped = applyValue(f, obj.args[0]);
+            return vConstr('some', [mapped]);
+          }
+        }
+        // none case - return none
+        return vConstr('none', []);
+      });
+    }
+    if (expr.field === 'getD') {
+      return vLam((defaultVal: Value) => {
+        if ((obj.name === 'some' || obj.name === 'Option.some') && obj.args.length === 1) {
+          return obj.args[0];
+        }
+        return defaultVal;
+      });
+    }
+    if (expr.field === 'bind') {
+      return vLam((f: Value) => {
+        if ((obj.name === 'some' || obj.name === 'Option.some') && obj.args.length === 1) {
+          return applyValue(f, obj.args[0]);
+        }
+        return vConstr('none', []);
+      });
+    }
+    if (expr.field === 'isSome') {
+      return vBool(obj.name === 'some' || obj.name === 'Option.some');
+    }
+    if (expr.field === 'isNone') {
+      return vBool(obj.name === 'none' || obj.name === 'Option.none');
+    }
+    // .snd on some tuple - extract snd from the wrapped tuple
+    if (expr.field === 'snd' && (obj.name === 'some' || obj.name === 'Option.some') && obj.args.length === 1) {
+      const inner = obj.args[0];
+      if (inner.kind === 'VConstr' && inner.args.length === 2) {
+        return inner.args[1];
+      }
+      if (inner.kind === 'VArray' && inner.elements.length >= 2) {
+        return inner.elements[1];
+      }
+    }
+    // .fst on some tuple - extract fst from the wrapped tuple
+    if (expr.field === 'fst' && (obj.name === 'some' || obj.name === 'Option.some') && obj.args.length === 1) {
+      const inner = obj.args[0];
+      if (inner.kind === 'VConstr' && inner.args.length === 2) {
+        return inner.args[0];
+      }
+      if (inner.kind === 'VArray' && inner.elements.length >= 2) {
+        return inner.elements[0];
+      }
+    }
+  }
+
+  // Helper function to convert VConstr list to array
+  function constrListToArray(list: Value): Value[] | null {
+    if (list.kind === 'VConstr') {
+      if (list.name === 'nil' || list.name === 'List.nil') {
+        return [];
+      }
+      if ((list.name === 'cons' || list.name === 'List.cons') && list.args.length === 2) {
+        const rest = constrListToArray(list.args[1]);
+        if (rest !== null) {
+          return [list.args[0], ...rest];
+        }
+      }
+    }
+    return null;
+  }
+
+  // Handle List methods on VConstr lists (List.cons / List.nil)
+  if (obj.kind === 'VConstr') {
+    const isList = obj.name === 'nil' || obj.name === 'List.nil' ||
+                   obj.name === 'cons' || obj.name === 'List.cons';
+    if (isList) {
+      const elements = constrListToArray(obj);
+      if (elements !== null) {
+        // Convert to VArray and recursively call evalFieldAccess
+        const arr = vArray(elements);
+        // Create a new field access expression for the array
+        const arrObj = arr;
+        // Handle common list methods directly
+        if (expr.field === 'length' || expr.field === 'size') {
+          return vNat(elements.length);
+        }
+        if (expr.field === 'isEmpty') {
+          return vBool(elements.length === 0);
+        }
+        if (expr.field === 'head' || expr.field === 'headD') {
+          if (elements.length > 0) return elements[0];
+          return vConstr('none', []);
+        }
+        if (expr.field === 'head?') {
+          if (elements.length > 0) return vConstr('some', [elements[0]]);
+          return vConstr('none', []);
+        }
+        if (expr.field === 'tail' || expr.field === 'tailD') {
+          if (elements.length > 0) return vArray(elements.slice(1));
+          return vArray([]);
+        }
+        if (expr.field === 'reverse') {
+          return vArray([...elements].reverse());
+        }
+        if (expr.field === 'toArray') {
+          return arr;
+        }
+        if (expr.field === 'map') {
+          return vLam((f: Value) => {
+            const mapped = elements.map(elem => applyValue(f, elem));
+            return vArray(mapped);
+          });
+        }
+        if (expr.field === 'filter') {
+          return vLam((pred: Value) => {
+            const filtered = elements.filter(elem => {
+              const result = applyValue(pred, elem);
+              return result.kind === 'VLit' && result.value === true;
+            });
+            return vArray(filtered);
+          });
+        }
+        if (expr.field === 'foldl') {
+          return vLam((f: Value) => vLam((init: Value) => {
+            let acc = init;
+            for (const elem of elements) {
+              acc = applyValue(applyValue(f, acc), elem);
+            }
+            return acc;
+          }));
+        }
+        if (expr.field === 'find?') {
+          return vLam((p: Value) => {
+            for (const elem of elements) {
+              const result = applyValue(p, elem);
+              if (result.kind === 'VLit' && result.type === 'bool' && result.value === true) {
+                return vConstr('some', [elem]);
+              }
+            }
+            return vConstr('none', []);
+          });
+        }
+        if (expr.field === 'mapIdx') {
+          return vLam((f: Value) => {
+            const mapped = elements.map((elem, idx) =>
+              applyValue(applyValue(f, vNat(idx)), elem)
+            );
+            return vArray(mapped);
+          });
+        }
+        if (expr.field === 'take') {
+          return vLam((n: Value) => {
+            if (n.kind === 'VLit') {
+              const count = Number(n.value);
+              return vArray(elements.slice(0, count));
+            }
+            return vNeutral(nApp(nApp(nVar('List.take'), obj), n));
+          });
+        }
+        if (expr.field === 'drop') {
+          return vLam((n: Value) => {
+            if (n.kind === 'VLit') {
+              const count = Number(n.value);
+              return vArray(elements.slice(count));
+            }
+            return vNeutral(nApp(nApp(nVar('List.drop'), obj), n));
+          });
+        }
       }
     }
   }
@@ -960,6 +1469,94 @@ function evalFieldAccess(expr: AST.FieldAccessExpr, env: Env): Value {
       }
       return vNeutral(nApp(nVar('List.length'), obj));
     }
+    if (expr.field === 'eraseDups') {
+      const seen = new Set<string>();
+      const result: Value[] = [];
+      for (const elem of obj.elements) {
+        const key = formatValue(elem);
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push(elem);
+        }
+      }
+      return vArray(result);
+    }
+    if (expr.field === 'filterMap') {
+      const list = obj;
+      return vLam((f: Value) => {
+        if (list.kind === 'VArray') {
+          const results: Value[] = [];
+          for (const elem of list.elements) {
+            const result = applyValue(f, elem);
+            if (result.kind === 'VConstr' && result.name === 'some' && result.args.length === 1) {
+              results.push(result.args[0]);
+            }
+          }
+          return vArray(results);
+        }
+        return vNeutral(nApp(nApp(nVar('List.filterMap'), list), f));
+      });
+    }
+    if (expr.field === 'head?') {
+      if (obj.elements.length > 0) {
+        return vConstr('some', [obj.elements[0]]);
+      }
+      return vConstr('none', []);
+    }
+    if (expr.field === 'toArray') {
+      return obj; // Already an array
+    }
+    if (expr.field === 'elem') {
+      const list = obj;
+      return vLam((elem: Value) => {
+        if (list.kind === 'VArray') {
+          for (const e of list.elements) {
+            if (valuesEqual(e, elem)) {
+              return vBool(true);
+            }
+          }
+          return vBool(false);
+        }
+        return vNeutral(nApp(nApp(nVar('List.elem'), list), elem));
+      });
+    }
+    if (expr.field === 'mapIdx') {
+      const list = obj;
+      return vLam((f: Value) => {
+        if (list.kind === 'VArray') {
+          const mapped = list.elements.map((elem, idx) =>
+            applyValue(applyValue(f, vNat(idx)), elem)
+          );
+          return vArray(mapped);
+        }
+        return vNeutral(nApp(nApp(nVar('List.mapIdx'), list), f));
+      });
+    }
+    if (expr.field === 'toList') {
+      // Convert array to List constructor form
+      let list = vConstr('List.nil', []);
+      for (let i = obj.elements.length - 1; i >= 0; i--) {
+        list = vConstr('List.cons', [obj.elements[i], list]);
+      }
+      return list;
+    }
+    if (expr.field === 'qsort' || expr.field === 'sort') {
+      // Array.qsort : (α → α → Bool) → Array α → Array α
+      const arr = obj;
+      return vLam((lt: Value) => {
+        if (arr.kind === 'VArray') {
+          const sorted = [...arr.elements].sort((a, b) => {
+            const result = applyValue(applyValue(lt, a), b);
+            if (result.kind === 'VLit' && result.type === 'bool') {
+              return result.value ? -1 : 1;
+            }
+            return 0;
+          });
+          return vArray(sorted);
+        }
+        return vNeutral(nApp(nApp(nVar('Array.qsort'), arr), lt));
+      });
+    }
   }
 
   if (obj.kind === 'VStruct') {
@@ -1004,7 +1601,20 @@ function evalTuple(expr: AST.TupleExpr, env: Env): Value {
   if (elements.length === 2) {
     return vConstr('Pair.mk', elements);
   }
-  // For larger tuples, store as array
+  // For larger tuples, build nested pairs (right-associative like Lean4)
+  // (a, b, c) becomes (a, (b, c))
+  if (elements.length > 2) {
+    let result = vConstr('Pair.mk', [elements[elements.length - 2], elements[elements.length - 1]]);
+    for (let i = elements.length - 3; i >= 0; i--) {
+      result = vConstr('Pair.mk', [elements[i], result]);
+    }
+    return result;
+  }
+  // Single element tuple - just return the element
+  if (elements.length === 1) {
+    return elements[0];
+  }
+  // Empty tuple
   return vArray(elements);
 }
 
@@ -1016,6 +1626,20 @@ function evalStructLit(expr: AST.StructLitExpr, env: Env): Value {
   }));
   // Return as a VStruct to preserve field names
   return vStruct(fields);
+}
+
+function evalInterpolatedString(expr: AST.InterpolatedStringExpr, env: Env): Value {
+  let result = '';
+  for (const part of expr.parts) {
+    if (part.type === 'text') {
+      result += part.value;
+    } else {
+      // Evaluate the expression and format it (without extra quotes for strings/chars)
+      const value = evaluate(part.value, env);
+      result += formatValueRaw(value);
+    }
+  }
+  return vString(result);
 }
 
 function evalBinOp(expr: AST.BinOpExpr, env: Env): Value {
@@ -1159,6 +1783,13 @@ function applyBinaryOp(op: AST.BinaryOp, left: Value, right: Value): Value {
         return vArray([...left.elements, ...right.elements]);
       }
     }
+    // Handle equality for constructors
+    if (op === 'eq') {
+      return vBool(valuesEqual(left, right));
+    }
+    if (op === 'ne') {
+      return vBool(!valuesEqual(left, right));
+    }
   }
 
   // Array operations
@@ -1200,14 +1831,20 @@ function evalUnaryOp(expr: AST.UnaryOpExpr, env: Env): Value {
 function countConstructorArgs(type: AST.Expr | undefined): number {
   if (!type) return 0;
 
-  // If it's a function type (arrow), count arrows
-  if (type.kind === 'binOp' && type.op === 'range') {
+  // If it's a function type (arrow ->), count arrows
+  // Note: Arrow types are parsed as binOp with 'implies' op
+  if (type.kind === 'binOp' && (type.op === 'implies' || type.op === 'range')) {
     // Count arrows recursively
     return 1 + countConstructorArgs(type.right);
   }
 
   // For pi types, count parameters
   if (type.kind === 'pi') {
+    return type.params.length + countConstructorArgs(type.body);
+  }
+
+  // For forall types, count parameters
+  if (type.kind === 'forall') {
     return type.params.length + countConstructorArgs(type.body);
   }
 

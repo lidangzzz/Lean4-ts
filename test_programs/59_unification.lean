@@ -3,6 +3,7 @@ inductive UTerm where
   | var : String → UTerm
   | const : String → UTerm
   | app : UTerm → UTerm → UTerm
+deriving Repr
 
 def occursIn (name : String) : UTerm → Bool
   | UTerm.var n => n = name
@@ -18,7 +19,7 @@ def substituteUTerm (term : UTerm) (name : String) (replacement : UTerm) : UTerm
 def applySubsts (term : UTerm) (substs : List (String × UTerm)) : UTerm :=
   substs.foldl (fun t (name, repl) => substituteUTerm t name repl) term
 
-def unifyTerms (t1 t2 : UTerm) : Option (List (String × UTerm)) :=
+partial def unifyTerms (t1 t2 : UTerm) : Option (List (String × UTerm)) :=
   let rec unify (a b : UTerm) (substs : List (String × UTerm)) : Option (List (String × UTerm)) :=
     let a' := applySubsts a substs
     let b' := applySubsts b substs
@@ -80,3 +81,14 @@ def x := s1 + s2 + s3 + s4 + v1 + v2 +
          (match u1 with | some l => l.length | none => 0) +
          (match u2 with | some l => l.length | none => 0) +
          (match u3 with | some _ => 0 | none => 1)
+
+#eval s!"Term 1 size: {s1}"
+#eval s!"Term 2 size: {s2}"
+#eval s!"Term 3 size: {s3}"
+#eval s!"Term 4 size: {s4}"
+#eval s!"Vars in t1: {v1}"
+#eval s!"Vars in t3: {v2}"
+#eval s!"Unification t1 t2: {repr u1}"
+#eval s!"Unification t3 t4: {repr u2}"
+#eval s!"Unification t5 t6 (should fail): {repr u3}"
+#eval s!"Total x: {x}"

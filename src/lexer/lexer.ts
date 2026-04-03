@@ -338,6 +338,12 @@ export class Lexer {
       case '»':
         this.addToken(TokenType.RDQUOTE, '»');
         break;
+      case '⟨':
+        this.addToken(TokenType.LTUPLE, '⟨');
+        break;
+      case '⟩':
+        this.addToken(TokenType.RTUPLE, '⟩');
+        break;
 
       default:
         // Handle unicode middle dot as a hole/placeholder (used in anonymous functions like · ++ ·)
@@ -373,7 +379,7 @@ export class Lexer {
   private isUnicodeLetter(char: string): boolean {
     const code = char.codePointAt(0) || 0;
     // Basic check for Unicode letters (Greek, mathematical symbols used as identifiers)
-    return code > 127 && !'→←∀∃λΠΣ×∧∨¬∪∩⊆∈∉∅«»≠'.includes(char);
+    return code > 127 && !'→←∀∃λΠΣ×∧∨¬∪∩⊆∈∉∅«»≠⟨⟩'.includes(char);
   }
 
   private scanNumber(): void {
@@ -383,15 +389,28 @@ export class Lexer {
     const startPos = this.pos - 1;
     value = this.source[startPos];
 
+    // Check if this is a single-digit tuple accessor (previous token was DOT)
+    // In that case, don't consume the next DOT as a decimal point
+    const prevToken = this.tokens.length > 0 ? this.tokens[this.tokens.length - 1] : null;
+    const isTupleAccessor = prevToken && prevToken.type === TokenType.DOT && !this.isDigit(this.peek());
+
     while (this.isDigit(this.peek())) {
       value += this.advance();
     }
 
-    // Handle decimal numbers
-    if (this.peek() === '.' && this.isDigit(this.peekNext())) {
-      value += this.advance(); // consume '.'
-      while (this.isDigit(this.peek())) {
-        value += this.advance();
+    // Handle decimal numbers - but NOT if this is a tuple accessor
+    // Also, in Lean4, single digit after dot (like .1) is tuple access, not decimal
+    // Only treat as decimal if we have multiple digits before the dot (like 3.14)
+    if (!isTupleAccessor && this.peek() === '.' && this.isDigit(this.peekNext())) {
+      // Check if this looks like a tuple accessor: single digit followed by dot and another single digit
+      // Pattern: .N.M where N and M are single digits - this is nested tuple access
+      if (value.length === 1 && prevToken && prevToken.type === TokenType.DOT) {
+        // This is a tuple accessor like .2 - don't consume the next dot
+      } else {
+        value += this.advance(); // consume '.'
+        while (this.isDigit(this.peek())) {
+          value += this.advance();
+        }
       }
     }
 
@@ -517,6 +536,13 @@ export class Lexer {
       value += this.advance();
     }
 
+    // Handle string interpolation: s!"..." (identifier ending with ! followed by ")
+    if (value === 's!' && this.peek() === '"') {
+      this.advance(); // consume '"'
+      this.scanInterpolatedString();
+      return;
+    }
+
     // Handle scientific notation suffixes (like 'e' in 1e10)
     if (this.tokens.length > 0) {
       const lastToken = this.tokens[this.tokens.length - 1];
@@ -536,6 +562,90 @@ export class Lexer {
 
     const type = Object.prototype.hasOwnProperty.call(KEYWORDS, value) ? KEYWORDS[value] : TokenType.IDENT;
     this.addToken(type, value);
+  }
+
+  private scanInterpolatedString(): void {
+    // Parse an interpolated string like: text {expr1} text {expr2} text
+    // Store the raw string with expressions marked for later parsing
+    let value = '';
+    let depth = 0;  // brace depth
+    const parts: Array<{type: 'text' | 'expr', value: string}> = [];
+    let currentText = '';
+
+    while (!this.isAtEnd()) {
+      const char = this.peek();
+
+      if (char === '"') {
+        this.advance();
+        // End of string
+        if (currentText) {
+          parts.push({type: 'text', value: currentText});
+        }
+        // Store the parts as JSON in the token value
+        this.addToken(TokenType.INTERPOLATED_STRING, JSON.stringify(parts));
+        return;
+      } else if (char === '{') {
+        this.advance();
+        if (currentText) {
+          parts.push({type: 'text', value: currentText});
+          currentText = '';
+        }
+        // Parse expression until matching '}'
+        let exprStr = '';
+        depth = 1;
+        while (!this.isAtEnd() && depth > 0) {
+          const c = this.peek();
+          if (c === '{') {
+            depth++;
+            exprStr += this.advance();
+          } else if (c === '}') {
+            depth--;
+            if (depth === 0) {
+              this.advance();  // consume closing brace
+              break;
+            }
+            exprStr += this.advance();
+          } else if (c === '"') {
+            // Handle nested string
+            exprStr += this.advance();
+            while (!this.isAtEnd() && this.peek() !== '"') {
+              if (this.peek() === '\\') {
+                exprStr += this.advance();
+              }
+              if (!this.isAtEnd()) {
+                exprStr += this.advance();
+              }
+            }
+            if (!this.isAtEnd()) {
+              exprStr += this.advance();  // closing quote
+            }
+          } else {
+            exprStr += this.advance();
+          }
+        }
+        parts.push({type: 'expr', value: exprStr.trim()});
+      } else if (char === '\\') {
+        this.advance();
+        const escaped = this.advance();
+        switch (escaped) {
+          case 'n': currentText += '\n'; break;
+          case 't': currentText += '\t'; break;
+          case 'r': currentText += '\r'; break;
+          case '\\': currentText += '\\'; break;
+          case '"': currentText += '"'; break;
+          case '0': currentText += '\0'; break;
+          default: currentText += escaped;
+        }
+      } else {
+        if (char === '\n') {
+          this.line++;
+          this.column = 1;
+        }
+        currentText += this.advance();
+      }
+    }
+
+    throw new LexerError('Unterminated interpolated string', this.line, this.column);
   }
 
   private scanUnicodeIdentifier(): void {

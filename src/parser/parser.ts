@@ -76,7 +76,7 @@ export class Parser {
           this.skipNewlines();
           if (!this.match(TokenType.PIPE)) break;
 
-          if (this.check(TokenType.IDENT)) {
+          if (this.check(TokenType.IDENT) || this.isKeywordAsIdent()) {
             const ctorName = this.advance().value;
             // Register this constructor with its type
             this.inductiveCtors.set(ctorName, typeName);
@@ -123,6 +123,33 @@ export class Parser {
 
   private checkAny(...types: TokenType[]): boolean {
     return types.includes(this.current().type);
+  }
+
+  // Check if current token is a keyword that can be used as an identifier (for constructor names)
+  private isKeywordAsIdent(): boolean {
+    const t = this.current().type;
+    return t === TokenType.VARIABLE || t === TokenType.RETURN || t === TokenType.IN ||
+           t === TokenType.WHERE || t === TokenType.WITH || t === TokenType.THEN ||
+           t === TokenType.ELSE || t === TokenType.TYPE || t === TokenType.SORT ||
+           t === TokenType.PROP || t === TokenType.HAVE || t === TokenType.SHOW ||
+           t === TokenType.CLASS || t === TokenType.STRUCTURE || t === TokenType.FUN ||
+           t === TokenType.MATCH || t === TokenType.IF || t === TokenType.LET ||
+           t === TokenType.DO || t === TokenType.FORALL || t === TokenType.FORALL2 ||
+           t === TokenType.EXISTS || t === TokenType.EXISTS2;
+  }
+
+  // Check if token at offset is a keyword that can be used as an identifier
+  private isKeywordAsIdentAt(offset: number): boolean {
+    const token = this.peek(offset);
+    const t = token.type;
+    return t === TokenType.VARIABLE || t === TokenType.RETURN || t === TokenType.IN ||
+           t === TokenType.WHERE || t === TokenType.WITH || t === TokenType.THEN ||
+           t === TokenType.ELSE || t === TokenType.TYPE || t === TokenType.SORT ||
+           t === TokenType.PROP || t === TokenType.HAVE || t === TokenType.SHOW ||
+           t === TokenType.CLASS || t === TokenType.STRUCTURE || t === TokenType.FUN ||
+           t === TokenType.MATCH || t === TokenType.IF || t === TokenType.LET ||
+           t === TokenType.DO || t === TokenType.FORALL || t === TokenType.FORALL2 ||
+           t === TokenType.EXISTS || t === TokenType.EXISTS2;
   }
 
   private match(type: TokenType): boolean {
@@ -193,6 +220,10 @@ export class Parser {
     return { line: token.line, column: token.column };
   }
 
+  private prev(): Token {
+    return this.tokens[this.pos - 1];
+  }
+
   // Declarations
   private parseDecl(): AST.Decl | null {
     this.skipNewlinesAndComments();
@@ -207,6 +238,7 @@ export class Parser {
     // Check for modifiers
     let isPrivate = false;
     let isProtected = false;
+    let isPartial = false;
 
     if (this.match(TokenType.PRIVATE)) {
       isPrivate = true;
@@ -216,9 +248,15 @@ export class Parser {
       this.skipNewlinesAndComments();
     }
 
+    // Check for partial modifier
+    if (this.match(TokenType.PARTIAL)) {
+      isPartial = true;
+      this.skipNewlinesAndComments();
+    }
+
     switch (this.current().type) {
       case TokenType.DEF:
-        return this.parseDef(docstring, isPrivate, isProtected);
+        return this.parseDef(docstring, isPrivate, isProtected, isPartial);
       case TokenType.THEOREM:
         return this.parseTheorem(docstring);
       case TokenType.AXIOM:
@@ -254,7 +292,7 @@ export class Parser {
     }
   }
 
-  private parseDef(docstring?: string, isPrivate: boolean = false, isProtected: boolean = false): AST.DefDecl {
+  private parseDef(docstring?: string, isPrivate: boolean = false, isProtected: boolean = false, isPartial: boolean = false): AST.DefDecl {
     this.expect(TokenType.DEF, "Expected 'def'");
     this.skipNewlinesAndComments();
 
@@ -509,14 +547,17 @@ export class Parser {
 
       if (this.match(TokenType.PIPE)) {
         this.skipNewlinesAndComments();
-        // Constructor name can be an identifier or a keyword (like 'fun')
+        // Constructor name can be an identifier or a keyword (like 'fun', 'variable', etc.)
         let ctorName: string;
         if (this.check(TokenType.IDENT)) {
           ctorName = this.advance().value;
-        } else if (this.check(TokenType.FUN)) {
-          ctorName = 'fun';
-          this.advance();
-        } else if (this.checkAny(TokenType.MATCH, TokenType.IF, TokenType.LET, TokenType.DO, TokenType.FORALL, TokenType.FORALL2, TokenType.EXISTS, TokenType.EXISTS2)) {
+        } else if (this.checkAny(
+          TokenType.FUN, TokenType.MATCH, TokenType.IF, TokenType.LET, TokenType.DO,
+          TokenType.FORALL, TokenType.FORALL2, TokenType.EXISTS, TokenType.EXISTS2,
+          TokenType.VARIABLE, TokenType.RETURN, TokenType.IN, TokenType.WHERE,
+          TokenType.WITH, TokenType.THEN, TokenType.ELSE, TokenType.TYPE, TokenType.SORT,
+          TokenType.PROP, TokenType.HAVE, TokenType.SHOW, TokenType.CLASS, TokenType.STRUCTURE
+        )) {
           ctorName = this.advance().value;
         } else {
           throw new ParseError("Expected constructor name", this.current());
@@ -979,6 +1020,12 @@ export class Parser {
       return [{ name, type: undefined, implicit: false, instImplicit: false, strictImplicit: false }];
     }
 
+    // Simple underscore/hole (type inferred) - used as wildcard parameter
+    if (this.check(TokenType.HOLE)) {
+      this.advance();
+      return [{ name: '_', type: undefined, implicit: false, instImplicit: false, strictImplicit: false }];
+    }
+
     return [];
   }
 
@@ -1004,7 +1051,7 @@ export class Parser {
         };
 
         // Parse any arguments to the method
-        while (this.checkAny(TokenType.LPAREN, TokenType.LBRACKET, TokenType.IDENT, TokenType.NUMBER, TokenType.STRING)) {
+        while (this.checkAny(TokenType.LPAREN, TokenType.LBRACKET, TokenType.IDENT, TokenType.NUMBER, TokenType.STRING, TokenType.FUN, TokenType.LAMBDA)) {
           const arg = this.parseArg();
           if (!arg) break;
           methodExpr = AST.app(methodExpr, arg.expr, !arg.implicit, this.loc());
@@ -1051,7 +1098,7 @@ export class Parser {
           loc: this.loc()
         };
 
-        while (this.checkAny(TokenType.LPAREN, TokenType.LBRACKET, TokenType.IDENT, TokenType.NUMBER, TokenType.STRING)) {
+        while (this.checkAny(TokenType.LPAREN, TokenType.LBRACKET, TokenType.IDENT, TokenType.NUMBER, TokenType.STRING, TokenType.FUN, TokenType.LAMBDA)) {
           if (this.shouldStopAtIndent()) break;
           const arg = this.parseArg();
           if (!arg) break;
@@ -1219,14 +1266,65 @@ export class Parser {
             loc: this.loc()
           };
         }
+        if (this.check(TokenType.NUMBER)) {
+          const field = this.advance().value;
+          return {
+            kind: 'fieldAccess',
+            object: expr,
+            field,
+            loc: this.loc()
+          };
+        }
       }
       return expr;
     }
 
+    // Handle field access and application for non-literal expressions
     while (!this.isAtEnd() && !this.shouldStopAtIndent()) {
-      const arg = this.parseArgIndentAware();
-      if (!arg) break;
-      expr = AST.app(expr, arg.expr, !arg.implicit, this.loc());
+      this.skipNewlinesAndComments();
+
+      if (this.match(TokenType.DOT)) {
+        // Check if this is an enum constructor argument (.red, .black)
+        // If the next identifier starts with lowercase and is a known constructor,
+        // treat it as an argument, not field access
+        if (this.check(TokenType.IDENT)) {
+          const nextIdent = this.peek(0).value;
+          if (nextIdent[0] === nextIdent[0].toLowerCase() && this.inductiveCtors.has(nextIdent)) {
+            // This is an enum constructor - treat as argument
+            const ctorName = this.advance().value;
+            const typeName = this.inductiveCtors.get(ctorName);
+            const arg = typeName ? AST.ident(`${typeName}.${ctorName}`, this.loc()) : AST.ident(ctorName, this.loc());
+            expr = AST.app(expr, arg, true, this.loc());
+            continue;
+          }
+        }
+
+        // Field access - handle IDENT or keywords that can be used as field names
+        if (this.check(TokenType.IDENT) || this.isKeywordAsIdent()) {
+          const field = this.advance().value;
+          expr = {
+            kind: 'fieldAccess',
+            object: expr,
+            field,
+            loc: this.loc()
+          };
+        } else if (this.check(TokenType.NUMBER)) {
+          const field = this.advance().value;
+          expr = {
+            kind: 'fieldAccess',
+            object: expr,
+            field,
+            loc: this.loc()
+          };
+        } else {
+          break;
+        }
+      } else {
+        // Function application
+        const arg = this.parseArgIndentAware();
+        if (!arg) break;
+        expr = AST.app(expr, arg.expr, !arg.implicit, this.loc());
+      }
     }
 
     return expr;
@@ -1484,7 +1582,26 @@ export class Parser {
             index: typeof index === 'object' && 'kind' in index && (expr as any).kind === 'literal' ? parseInt((expr as any).value) : 0,
             loc: this.loc()
           };
+          // Check for ? suffix on array access (e.g., arr[i]? for safe access)
+          if (this.match(TokenType.QUESTION)) {
+            // arr[i]? is a safe array access - transform to method call
+            expr = {
+              kind: 'fieldAccess',
+              object: expr,
+              field: 'getD',
+              loc: this.loc()
+            };
+          }
         }
+      } else if (this.match(TokenType.QUESTION)) {
+        // Handle ? postfix operator (e.g., e? for Option-returning operations)
+        // Transform e? into e.getD call (safe access)
+        expr = {
+          kind: 'fieldAccess',
+          object: expr,
+          field: '?',
+          loc: this.loc()
+        };
       } else {
         // Function application
         const arg = this.parseArg();
@@ -1566,12 +1683,24 @@ export class Parser {
       TokenType.NEWLINE, TokenType.EOF, TokenType.PIPE,
       TokenType.COMMA, TokenType.SEMI, TokenType.COLON,
       TokenType.ASSIGN, TokenType.ARROW, TokenType.FAT_ARROW,
-      TokenType.THEN, TokenType.ELSE, TokenType.DO, TokenType.WHERE
+      TokenType.THEN, TokenType.ELSE, TokenType.DO, TokenType.WHERE,
+      TokenType.DEF, TokenType.AXIOM, TokenType.INDUCTIVE, TokenType.CLASS,
+      TokenType.STRUCTURE, TokenType.INSTANCE, TokenType.THEOREM,
+      TokenType.NAMESPACE, TokenType.END, TokenType.VARIABLE,
+      TokenType.HASH  // Stop at #eval, #check, etc.
     )) {
       return null;
     }
 
-    const expr = this.tryParsePrimaryExpr();
+    // Also stop if the identifier is a keyword that starts a new declaration
+    if (this.check(TokenType.IDENT)) {
+      const val = this.current().value;
+      if (val === 'partial' || val === 'private' || val === 'protected') {
+        return null;
+      }
+    }
+
+    const expr = this.tryParsePrimaryExprWithFieldAccess();
     if (!expr) return null;
 
     return { expr, implicit: false };
@@ -1579,6 +1708,18 @@ export class Parser {
 
   private tryParsePrimaryExpr(): AST.Expr | null {
     try {
+      return this.parsePrimaryExpr();
+    } catch {
+      return null;
+    }
+  }
+
+  private tryParsePrimaryExprWithFieldAccess(): AST.Expr | null {
+    try {
+      // Only parse the primary expression, do NOT consume field accesses here.
+      // Field accesses should bind to the outer expression, not the argument.
+      // For example, in `elems.map jsonDepth.foldl max 0`, the `.foldl` should
+      // apply to the result of `elems.map jsonDepth`, not to `jsonDepth`.
       return this.parsePrimaryExpr();
     } catch {
       return null;
@@ -1600,6 +1741,26 @@ export class Parser {
 
     if (this.check(TokenType.STRING)) {
       return AST.literal('string', this.advance().value, loc);
+    }
+
+    if (this.check(TokenType.INTERPOLATED_STRING)) {
+      const token = this.advance();
+      const parts: Array<{type: 'text', value: string} | {type: 'expr', value: AST.Expr}> = [];
+      try {
+        const parsedParts = JSON.parse(token.value) as Array<{type: 'text' | 'expr', value: string}>;
+        for (const part of parsedParts) {
+          if (part.type === 'text') {
+            parts.push({type: 'text', value: part.value});
+          } else {
+            // Parse the expression string
+            const exprModule = this.parseExpressionString(part.value);
+            parts.push({type: 'expr', value: exprModule});
+          }
+        }
+      } catch (e) {
+        throw new Error(`Failed to parse interpolated string: ${e}`);
+      }
+      return {kind: 'interpolatedString', parts, loc};
     }
 
     if (this.check(TokenType.CHAR)) {
@@ -1697,12 +1858,24 @@ export class Parser {
     if (this.match(TokenType.IF)) {
       const ifStartColumn = this.current().column;
       this.skipNewlinesAndComments();
-      // For if expressions, we don't strictly enforce single-line mode
-      // because if-then-else naturally spans multiple lines
       const prevMode = this.singleLineMode;
       const prevMinIndent = this.minIndentColumn;
       this.singleLineMode = false;
-      this.minIndentColumn = ifStartColumn;  // Stop parsing at tokens at or before this column
+
+      // Only set minIndentColumn if not already constrained by outer context
+      // This allows else if ... else chains to work correctly
+      if (prevMinIndent === 0) {
+        this.minIndentColumn = ifStartColumn;
+      }
+
+      // Check for dependent if: if h : condition then ...
+      let hypothesis: string | undefined;
+      if (this.check(TokenType.IDENT) && this.peek(1)?.type === TokenType.COLON) {
+        hypothesis = this.advance().value;
+        this.advance(); // consume ':'
+        this.skipNewlinesAndComments();
+      }
+
       const cond = this.parseExpr();
       this.skipNewlinesAndComments();
       this.expect(TokenType.THEN, "Expected 'then'");
@@ -1710,15 +1883,21 @@ export class Parser {
       const thenBranch = this.parseExpr();
       this.skipNewlinesAndComments();
 
+      // Temporarily disable indent check to find the 'else' keyword
+      const savedMinIndent = this.minIndentColumn;
+      this.minIndentColumn = 0;
+
       let elseBranch: AST.Expr | undefined;
       if (this.match(TokenType.ELSE)) {
         this.skipNewlinesAndComments();
+        // Restore the saved indent for parsing the else branch
+        this.minIndentColumn = savedMinIndent;
         elseBranch = this.parseExpr();
       }
 
       this.singleLineMode = prevMode;
       this.minIndentColumn = prevMinIndent;
-      return AST.if_(cond, thenBranch, elseBranch, loc);
+      return AST.if_(cond, thenBranch, elseBranch, loc, hypothesis);
     }
 
     // Match expression
@@ -1735,17 +1914,63 @@ export class Parser {
       this.expect(TokenType.WITH, "Expected 'with'");
       this.skipNewlinesAndComments();
 
+      // Store the previous minIndentColumn to restore later
+      const prevMinIndent = this.minIndentColumn;
+      // Set minIndentColumn to the current column (where the first | should be)
+      // This ensures nested matches stop when they see a | at this column
+      if (this.check(TokenType.PIPE)) {
+        this.minIndentColumn = this.current().column;
+      }
+
       const cases: AST.MatchCase[] = [];
 
+      // Store the column where the first match case pipe appears (for indent-aware parsing)
+      const matchCaseStartColumn = this.current().column;
+
+      let caseNum = 0;
       while (this.match(TokenType.PIPE)) {
+        // Stop if we've dedented back to or before the outer context
+        if (this.shouldStopAtIndent()) {
+          this.pos--; // Put the pipe back
+          break;
+        }
         this.skipNewlinesAndComments();
-        // Parse comma-separated patterns for multiple scrutinees
-        const patterns: AST.Pattern[] = [this.parsePattern()];
+        caseNum++;
+        // Parse or-patterns: | p1 | p2 => body (multiple alternatives sharing the same body)
+        // Each alternative can be a single pattern or a tuple of patterns for multiple scrutinees
+        const alternativePatterns: AST.Pattern[][] = [];
+
+        // Parse the first alternative
+        const firstPatterns: AST.Pattern[] = [this.parsePattern()];
         this.skipNewlinesAndComments();
+        // Handle comma-separated patterns for multiple scrutinees
         while (this.match(TokenType.COMMA)) {
           this.skipNewlinesAndComments();
-          patterns.push(this.parsePattern());
+          firstPatterns.push(this.parsePattern());
           this.skipNewlinesAndComments();
+        }
+        alternativePatterns.push(firstPatterns);
+
+        // Check for or-patterns: additional alternatives separated by |
+        // But only if the next | is NOT followed by => (which would mean empty pattern)
+        while (this.match(TokenType.PIPE)) {
+          this.skipNewlinesAndComments();
+          // Check if this starts a new case (look ahead for => after pattern)
+          // If we see => immediately, this was actually the start of a new case
+          if (this.check(TokenType.FAT_ARROW) || this.check(TokenType.ARROW)) {
+            // This is a new case starting - put the pipe back
+            this.pos--;
+            break;
+          }
+          // Parse another alternative pattern
+          const altPatterns: AST.Pattern[] = [this.parsePattern()];
+          this.skipNewlinesAndComments();
+          while (this.match(TokenType.COMMA)) {
+            this.skipNewlinesAndComments();
+            altPatterns.push(this.parsePattern());
+            this.skipNewlinesAndComments();
+          }
+          alternativePatterns.push(altPatterns);
         }
 
         if (this.match(TokenType.FAT_ARROW) || this.match(TokenType.ARROW)) {
@@ -1754,16 +1979,23 @@ export class Parser {
           this.skipNewlinesAndComments();
         }
 
-        const body = this.parseExpr();
-        // Create a tuple pattern if multiple patterns, otherwise single pattern
-        const pattern: AST.Pattern = patterns.length === 1
-          ? patterns[0]
-          : { kind: 'tuple', elements: patterns, loc: this.loc() };
-        cases.push({ pattern, body, loc: this.loc() });
+        // Use indent-aware parsing for the body to stop at outer indentation
+        const body = this.parseExprIndentAware();
+
+        // Create a case for each alternative pattern (or-pattern expansion)
+        for (const patterns of alternativePatterns) {
+          const pattern: AST.Pattern = patterns.length === 1
+            ? patterns[0]
+            : { kind: 'tuple', elements: patterns, loc: this.loc() };
+          cases.push({ pattern, body, loc: this.loc() });
+        }
         this.skipNewlinesAndComments();
 
         if (!this.check(TokenType.PIPE)) break;
       }
+
+      // Restore the previous minIndentColumn
+      this.minIndentColumn = prevMinIndent;
 
       // Create match expression with tuple scrutinee if multiple
       const scrutinee: AST.Expr = scrutinees.length === 1
@@ -1774,6 +2006,8 @@ export class Parser {
 
     // Let expression
     if (this.match(TokenType.LET)) {
+      // Capture the let start column right after matching LET, before any skipping
+      const letStartColumn = this.prev().column;
       this.skipNewlinesAndComments();
 
       // Check for 'rec' keyword for recursive let
@@ -1835,9 +2069,7 @@ export class Parser {
       // Check for pattern-matching style (with | patterns)
       if (this.match(TokenType.PIPE)) {
         // Pattern-matching style let rec
-        // Track the indentation of the 'let' keyword to know where the body should start
-        // The body should be at a column less than the 'let rec' keyword's column
-        const letStartColumn = loc.column;
+        // Use the letStartColumn captured earlier
         const cases: { patterns: AST.Pattern[], body: AST.Expr }[] = [];
 
         // Helper to check if current position looks like a pattern at the right indentation
@@ -1940,9 +2172,10 @@ export class Parser {
       this.expect(TokenType.ASSIGN, "Expected ':='");
       this.skipNewlinesAndComments();
 
-      // Parse the value expression on the same line only
-      const startLine = this.current().line;
-      let value = this.parseSingleLineExpr(startLine);
+      // Parse the value expression
+      // Use indent-aware parsing to stop at the body (which should be at or before let's column)
+      // Use the letStartColumn captured earlier
+      let value = this.parseExprWithIndentStop(letStartColumn);
 
       // If we have parameters, wrap the value in lambdas
       if (params.length > 0) {
@@ -2122,6 +2355,29 @@ export class Parser {
       return AST.arrayLit(elements, loc);
     }
 
+    // Anonymous constructor ⟨a, b, c⟩ (Unicode angle brackets U+27E8/U+27E9)
+    if (this.match(TokenType.LTUPLE)) {
+      this.skipNewlinesAndComments();
+      const elements: AST.Expr[] = [];
+
+      if (!this.check(TokenType.RTUPLE)) {
+        do {
+          this.skipNewlinesAndComments();
+          // Handle trailing comma
+          if (this.check(TokenType.RTUPLE)) break;
+          elements.push(this.parseExpr());
+          this.skipNewlinesAndComments();
+        } while (this.match(TokenType.COMMA));
+      }
+
+      this.expect(TokenType.RTUPLE, "Expected '⟩'");
+
+      // Create an anonymous constructor expression
+      // This will be resolved during type checking/evaluation
+      // For now, we use a special "anonCtor" expression kind
+      return { kind: 'anonCtor', elements, loc } as any;
+    }
+
     // Dot notation for enum constructors (.red, .black, etc.) in expressions
     // Resolve to TypeName.constructor based on inductiveCtors map
     if (this.check(TokenType.DOT) && this.peek(1).type === TokenType.IDENT) {
@@ -2150,7 +2406,7 @@ export class Parser {
       const startsLowercase = name[0] === name[0].toLowerCase();
       if (!startsLowercase) {
         // First part is uppercase - this is a type/namespace
-        while (this.check(TokenType.DOT) && this.peek(1).type === TokenType.IDENT) {
+        while (this.check(TokenType.DOT) && (this.peek(1).type === TokenType.IDENT || this.isKeywordAsIdentAt(1))) {
           const nextIdent = this.peek(1).value;
           // Check if nextIdent is a constructor of fullName type
           const ctorOfType = this.inductiveCtors.get(nextIdent);
@@ -2309,8 +2565,10 @@ export class Parser {
   private parseSingleLineOrExpr(startLine: number): AST.Expr {
     let left = this.parseSingleLineAndExpr(startLine);
 
-    while (this.current().line === startLine && (this.match(TokenType.LOR) || this.match(TokenType.OR))) {
-      const right = this.parseSingleLineAndExpr(startLine);
+    // Allow || to span multiple lines by skipping newlines after the operator
+    while (this.match(TokenType.LOR) || this.match(TokenType.OR)) {
+      this.skipNewlinesAndComments();
+      const right = this.parseSingleLineAndExpr(this.current().line);
       left = AST.binOp('or', left, right, this.loc());
     }
 
@@ -2320,8 +2578,10 @@ export class Parser {
   private parseSingleLineAndExpr(startLine: number): AST.Expr {
     let left = this.parseSingleLineComparisonExpr(startLine);
 
-    while (this.current().line === startLine && (this.match(TokenType.LAND) || this.match(TokenType.AND))) {
-      const right = this.parseSingleLineComparisonExpr(startLine);
+    // Allow && to span multiple lines by skipping newlines after the operator
+    while (this.match(TokenType.LAND) || this.match(TokenType.AND)) {
+      this.skipNewlinesAndComments();
+      const right = this.parseSingleLineComparisonExpr(this.current().line);
       left = AST.binOp('and', left, right, this.loc());
     }
 
@@ -2415,37 +2675,40 @@ export class Parser {
 
   private parseSingleLineAppExpr(startLine: number): AST.Expr {
     let expr = this.parsePrimaryExpr();
+    // Consume any field accesses on the initial expression
+    while (this.match(TokenType.DOT)) {
+      if (this.check(TokenType.NUMBER)) {
+        const field = this.advance().value;
+        expr = {
+          kind: 'fieldAccess',
+          object: expr,
+          field,
+          loc: this.loc()
+        };
+      } else if (this.check(TokenType.IDENT)) {
+        const field = this.advance().value;
+        expr = {
+          kind: 'fieldAccess',
+          object: expr,
+          field,
+          loc: this.loc()
+        };
+      } else {
+        break;
+      }
+    }
 
     while (this.current().line === startLine) {
-      if (this.match(TokenType.DOT)) {
-        if (this.check(TokenType.NUMBER)) {
-          const field = this.advance().value;
-          expr = {
-            kind: 'fieldAccess',
-            object: expr,
-            field,
-            loc: this.loc()
-          };
-        } else if (this.check(TokenType.IDENT)) {
-          const field = this.advance().value;
-          expr = {
-            kind: 'fieldAccess',
-            object: expr,
-            field,
-            loc: this.loc()
-          };
-        }
-      } else {
-        // Try to parse an argument
-        if (this.current().line !== startLine) break;
-        if (this.checkAny(TokenType.RPAREN, TokenType.RBRACE, TokenType.RBRACKET, TokenType.NEWLINE, TokenType.EOF, TokenType.PIPE, TokenType.COMMA, TokenType.SEMI, TokenType.COLON, TokenType.ASSIGN, TokenType.ARROW, TokenType.FAT_ARROW, TokenType.THEN, TokenType.ELSE, TokenType.DO, TokenType.WHERE)) {
-          break;
-        }
-
-        const arg = this.tryParsePrimaryExpr();
-        if (!arg) break;
-        expr = AST.app(expr, arg, true, this.loc());
+      // Try to parse an argument
+      if (this.current().line !== startLine) break;
+      if (this.checkAny(TokenType.RPAREN, TokenType.RBRACE, TokenType.RBRACKET, TokenType.NEWLINE, TokenType.EOF, TokenType.PIPE, TokenType.COMMA, TokenType.SEMI, TokenType.COLON, TokenType.ASSIGN, TokenType.ARROW, TokenType.FAT_ARROW, TokenType.THEN, TokenType.ELSE, TokenType.DO, TokenType.WHERE)) {
+        break;
       }
+      if (this.check(TokenType.DOT)) break; // Field access on whole expression comes later
+
+      const arg = this.tryParsePrimaryExprWithFieldAccess();
+      if (!arg) break;
+      expr = AST.app(expr, arg, true, this.loc());
     }
 
     return expr;
@@ -2590,16 +2853,17 @@ export class Parser {
     }
 
     // Constructor or variable pattern
-    if (this.check(TokenType.IDENT)) {
+    // Also accept keywords as constructor names (for cases like Pattern.variable)
+    if (this.check(TokenType.IDENT) || this.isKeywordAsIdent()) {
       const name = this.advance().value;
 
-      // Handle namespaced constructors like Tree.leaf, Option.some
+      // Handle namespaced constructors like Tree.leaf, Option.some, Pattern.variable
       // But NOT .lowercase which is an enum constructor argument (like .red, .black)
       let fullName = name;
       while (this.check(TokenType.DOT)) {
-        // Peek at the next identifier
+        // Peek at the next token - can be IDENT or a keyword used as constructor name
         const nextIdent = this.peek(1);
-        if (nextIdent.type === TokenType.IDENT) {
+        if (nextIdent.type === TokenType.IDENT || this.isKeywordAsIdentAt(1)) {
           // Check if current fullName is a known type (has constructors)
           // If so, this is TypeName.constructor, keep consuming
           // If not, and the next ident starts with lowercase, it's an enum arg
@@ -2992,6 +3256,19 @@ export class Parser {
         // For other expression types, just return as-is
         return { expr, holeIndex };
     }
+  }
+
+  // Helper method to parse an expression from a string (for interpolated strings)
+  private parseExpressionString(exprStr: string): AST.Expr {
+    // Wrap in a def and parse
+    const fakeSource = `def __interp_expr := ${exprStr}`;
+    const module = parse(fakeSource);
+    const def = module.decls[0];
+    if (def.kind === 'def') {
+      return def.value;
+    }
+    // Fallback: return identifier
+    return { kind: 'ident', name: exprStr.trim() };
   }
 }
 

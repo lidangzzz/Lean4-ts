@@ -72,3 +72,9 @@ def result3 := match computation3 with | OptionM.some x => x | OptionM.none => 0
 def result4 := match computation4 with | OptionM.some x => x | OptionM.none => 0
 
 def x := result1 + result2 + result3 + result4
+
+#eval result1
+#eval result2
+#eval result3
+#eval result4
+#eval x

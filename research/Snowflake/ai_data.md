@@ -1,0 +1,13 @@
+# AI in Data Cloud Platforms
+
+## The Convergence of Data Cloud and Artificial Intelligence
+
+The modern data cloud platform has evolved from a simple data warehouse into a comprehensive foundation for AI innovation. At Snowflake, we recognize that AI is only as powerful as the data that fuels it. Our architecture is designed to break down data silos and enable organizations to unify their data workloads—whether they're running traditional analytics, building machine learning models, or deploying large language models (LLMs). By leveraging a secure, governed data cloud, enterprises can seamlessly integrate AI into their existing workflows without the complexity of managing fragmented infrastructure. The result is a single, global data ecosystem where data sharing, collaboration, and AI development happen in a unified environment.
+
+## AI Workloads and the Snowflake Data Cloud
+
+AI workloads demand more than raw compute power—they require immediate access to clean, governed, and well-structured data. Snowflake's platform is optimized for these requirements through features like Snowflake Cortex, which provides managed AI services, and Snowpark, which enables developers to build and run AI/ML models directly within the data cloud using their preferred programming languages. Whether fine-tuning foundation models, running inference at scale, or implementing retrieval-augmented generation (RAG) with document processing, organizations benefit from Snowflake's ability to process both structured and unstructured data without data movement or egress costs. This convergence of data management and AI compute eliminates friction and accelerates time-to-insight.
+
+## Snowflake's AI Capabilities: Building the Future
+
+Snowflake's AI strategy centers on democratizing access to advanced AI capabilities while maintaining enterprise-grade security and governance. With Snowflake Cortex, customers can access pre-built, fully managed LLMs and vector functions to build AI applications quickly, leveraging models like Mixtral, Llama, and proprietary Snowflake models optimized for enterprise use cases. Snowflake's native vector database enables semantic search and RAG workloads, while features like Document AI extract insights from unstructured documents at scale. Combined with Snowflake's zero-copy cloning, secure data sharing via the Data Marketplace, and cross-cloud portability, these capabilities ensure that AI projects can scale from prototype to production while maintaining compliance and cost efficiency. The future of AI in the data cloud is one where data, compute, and intelligence are seamlessly integrated—this is the vision Snowflake delivers.

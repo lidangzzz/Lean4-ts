@@ -8,3 +8,8 @@ def ack3_3 := ackermann 3 3
 def ack3_4 := ackermann 3 4
 def ack2_5 := ackermann 2 5
 def x := ack3_3 + ack3_4 + ack2_5
+
+#eval ack3_3
+#eval ack3_4
+#eval ack2_5
+#eval x

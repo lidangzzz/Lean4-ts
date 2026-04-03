@@ -337,9 +337,10 @@ export function formatValue(value: Value): string {
     case 'VNeutral':
       return formatNeutral(value.neutral);
     case 'VConstr':
-      // Handle Pair.mk as tuple
+      // Handle Pair.mk as tuple (flatten nested pairs)
       if (value.name === 'Pair.mk' && value.args.length === 2) {
-        return `(${formatValue(value.args[0])}, ${formatValue(value.args[1])})`;
+        const elements = flattenPair(value);
+        return `(${elements.map(formatValue).join(', ')})`;
       }
       const args = value.args.map(formatValue).join(' ');
       return args ? `${value.name} ${args}` : value.name;
@@ -354,6 +355,46 @@ export function formatValue(value: Value): string {
       return value.level === 0 ? 'Type' : `Type ${value.level}`;
     case 'VArray':
       return `[${value.elements.map(formatValue).join(', ')}]`;
+  }
+}
+
+// Helper to flatten nested pairs into a list of values
+function flattenPair(value: Value): Value[] {
+  if (value.kind === 'VConstr' && value.name === 'Pair.mk' && value.args.length === 2) {
+    return [...flattenPair(value.args[0]), ...flattenPair(value.args[1])];
+  }
+  return [value];
+}
+
+// Format value for string interpolation (no quotes on strings/chars)
+export function formatValueRaw(value: Value): string {
+  switch (value.kind) {
+    case 'VLit':
+      // No quotes for strings and chars in interpolation
+      return String(value.value);
+    case 'VClosure':
+      return `<closure>`;
+    case 'VNeutral':
+      return formatNeutral(value.neutral);
+    case 'VConstr':
+      if (value.name === 'Pair.mk' && value.args.length === 2) {
+        // Flatten nested pairs for tuple display
+        const elements = flattenPair(value);
+        return `(${elements.map(formatValueRaw).join(', ')})`;
+      }
+      const args = value.args.map(formatValueRaw).join(' ');
+      return args ? `${value.name} ${args}` : value.name;
+    case 'VStruct':
+      const fields = value.fields.map(f => `${f.name} := ${formatValueRaw(f.value)}`).join(', ');
+      return `{ ${fields} }`;
+    case 'VLam':
+      return `<lambda>`;
+    case 'VPi':
+      return `<pi>`;
+    case 'VSort':
+      return value.level === 0 ? 'Type' : `Type ${value.level}`;
+    case 'VArray':
+      return `[${value.elements.map(formatValueRaw).join(', ')}]`;
   }
 }
 

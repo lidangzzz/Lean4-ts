@@ -9,7 +9,7 @@ inductive Value where
   | literal : Nat → Value
   | constructor : String → List Value → Value
 
-def matchPattern (pattern : Pattern) (value : Value) : Option (List (String × Value)) :=
+partial def matchPattern (pattern : Pattern) (value : Value) : Option (List (String × Value)) :=
   match pattern, value with
   | Pattern.wildcard, _ => some []
   | Pattern.literal p, Value.literal v =>
@@ -80,3 +80,17 @@ def x := patternSize p1 + patternSize p2 + patternSize p4 + patternSize p5 + pat
          (match m4 with | some l => l.length | none => 0) +
          (match m5 with | some l => l.length | none => 0) +
          (match m6 with | some _ => 1 | none => 0)
+
+#eval s!"Pattern p1 size: {patternSize p1}"
+#eval s!"Pattern p4 size: {patternSize p4}"
+#eval s!"Value v1 size: {valueSize v1}"
+#eval s!"Value v4 size: {valueSize v4}"
+#eval s!"Wildcards in p5: {countWildcards p5}"
+#eval s!"Variables in p4: {countVariables p4}"
+#eval s!"Match m1 (wildcard): {m1.isSome}"
+#eval s!"Match m2 (literal match): {m2.isSome}"
+#eval s!"Match m3 (literal no match): {m3.isSome}"
+#eval s!"Match m4 (Some x): {m4.isSome}"
+#eval s!"Match m5 (Pair _ y): {m5.isSome}"
+#eval s!"Match m6 (nested): {m6.isSome}"
+#eval s!"Total x: {x}"

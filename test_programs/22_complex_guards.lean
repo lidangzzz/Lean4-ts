@@ -18,3 +18,11 @@ def c4 := if classify 2 2 5 == "a equals b" then 1 else 0
 def c5 := if classify 2 3 5 == "a plus b equals c" then 1 else 0
 def c6 := if classify 2 3 6 == "a times b equals c" then 1 else 0
 def x := c1 + c2 + c3 + c4 + c5 + c6
+
+#eval classify 1 1 1
+#eval classify 1 2 3
+#eval classify 3 2 1
+#eval classify 2 2 5
+#eval classify 2 3 5
+#eval classify 2 3 6
+#eval x

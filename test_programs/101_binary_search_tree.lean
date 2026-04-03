@@ -43,3 +43,10 @@ def s1 := bstSize bst1
 def h1 := bstHeight bst1
 
 def x := (if c1 then 1 else 0) + (if c2 then 1 else 0) + (if c3 then 10 else 0) + s1 + h1
+
+#eval c1
+#eval c2
+#eval c3
+#eval s1
+#eval h1
+#eval x

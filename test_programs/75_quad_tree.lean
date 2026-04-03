@@ -14,7 +14,7 @@ def inBounds (pt : Int × Int) (center : Int × Int) (size : Int) (quadrant : Na
   | 2 => pt.1 >= cx - hs && pt.1 < cx && pt.2 >= cy - hs && pt.2 < cy
   | _ => pt.1 >= cx && pt.1 < cx + hs && pt.2 >= cy - hs && pt.2 < cy
 
-def quadInsert (tree : QuadTree) (pt : Int × Int) (center : Int × Int) (size : Int) : QuadTree :=
+partial def quadInsert (tree : QuadTree) (pt : Int × Int) (center : Int × Int) (size : Int) : QuadTree :=
   match tree with
   | QuadTree.leaf pts =>
     if pts.length < quadCapacity then
@@ -66,7 +66,7 @@ def quadDepth (tree : QuadTree) : Nat :=
   | QuadTree.node _ nw ne sw se =>
     1 + max (max (quadDepth nw) (quadDepth ne)) (max (quadDepth sw) (quadDepth se))
 
-def points := [(2, 3), (5, 4), (9, 6), (4, 7), (8, 1), (7, 2), (6, 3), (1, 5)]
+def points : List (Int × Int) := [(2, 3), (5, 4), (9, 6), (4, 7), (8, 1), (7, 2), (6, 3), (1, 5)]
 def qt := points.foldl (fun t p => quadInsert t p (5, 5) 10) (QuadTree.leaf [])
 
 def count := quadCount qt
@@ -74,3 +74,4 @@ def depth := quadDepth qt
 def rangeResult := quadRangeQuery qt (3, 2) (7, 5) (5, 5) 10
 
 def x := count + depth + rangeResult.length
+#eval x

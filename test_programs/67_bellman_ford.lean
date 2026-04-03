@@ -29,11 +29,7 @@ def relaxEdge (edges : List WEdge) (d : List Int) : List Int :=
     let du := getDist d u
     let dv := getDist d v
     let d' := if du + w < dv then setDist d v (du + w) else d
-    match rest with
-    | [] => d
-    | WEdge.mk u2 v2 w2 :: rest2 =>
-      relaxEdge rest2 (relaxEdge edges d2)
-  | m + 1 => relaxEdge rest d2
+    relaxEdge rest d'
 
 def relaxN (n : Nat) (edges : List WEdge) (d : List Int) : List Int :=
   match n with
@@ -50,20 +46,11 @@ def hasNegCycle (edges : List WEdge) (d : List Int) : Bool :=
   | WEdge.mk u v w :: rest =>
     let du := getDist d u
     let dv := getDist d v
-    if du + w < dv then true else false
-
-    match rest with
-    | [] => false
-    | WEdge.mk _ _ _ _ :: hasNegCycle rest d
+    if du + w < dv then true else hasNegCycle rest d
 
 def edges1 := [
   WEdge.mk 0 1 4, WEdge.mk 0 2 5,
   WEdge.mk 1 2 (-3), WEdge.mk 2 3 2
-  WEdge.mk 3 4 2
-  WEdge.mk 1 4 (-4), WEdge.mk 4 5 2
-  WEdge.mk 2 1 0, WEdge.mk 2 1 0
-  WEdge.mk 3 2 0, WEdge.mk 3 4 3
-  WEdge.mk 4 5 (-4)
 ]
 
 def dist1 := bellmanFord 4 edges1 0
@@ -79,10 +66,17 @@ def edges2 := [
 ]
 
 def dist2 := bellmanFord 4 edges2 0
-def nc2 := hasNegCycle 4 edges2 dist2
+def nc2 := hasNegCycle edges2 dist2
 
 def x := (if d1_0 >= 0 then d1_0.toNat else 0) +
          (if d1_1 >= 0 then d1_1.toNat else 0) +
          (if d1_2 >= 0 then d1_2.toNat else 0) +
          (if d1_3 >= 0 then d1_3.toNat else 0) +
-         (if nc1 then 1 else 0) + (if nc2 then 1 else 0) + (if nc3 then 1 else 0)
+         (if nc1 then 1 else 0) + (if nc2 then 1 else 0)
+
+#eval s!"Dist1: {dist1}"
+#eval s!"d1_0: {d1_0}, d1_1: {d1_1}, d1_2: {d1_2}, d1_3: {d1_3}"
+#eval s!"Negative cycle 1: {nc1}"
+#eval s!"Dist2: {dist2}"
+#eval s!"Negative cycle 2: {nc2}"
+#eval s!"Total x: {x}"

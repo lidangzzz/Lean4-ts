@@ -33,3 +33,9 @@ def v2 := eval e2
 def d := exprDepth e2
 def s := exprSize e2
 def x := v1 + v2 + d + s
+
+#eval v1
+#eval v2
+#eval d
+#eval s
+#eval x

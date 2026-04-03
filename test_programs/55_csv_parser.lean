@@ -2,3 +2,7 @@
 def csv1 := "a,b,c"
 def csv2 := "1,2,3"
 def x := 4
+
+#eval csv1
+#eval csv2
+#eval x

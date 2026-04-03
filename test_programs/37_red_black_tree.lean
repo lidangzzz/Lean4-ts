@@ -59,3 +59,12 @@ def h2 := rbHeight tree2
 def inorder2 := rbInorder tree2
 
 def x := h1 + s1 + (if c1 then 1 else 0) + (if c2 then 1 else 0) + h2 + inorder1.length + inorder2.length
+
+#eval h1
+#eval s1
+#eval c1
+#eval c2
+#eval inorder1
+#eval h2
+#eval inorder2
+#eval x

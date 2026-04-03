@@ -1,0 +1,9 @@
+# AI in Transportation and Mobility
+
+## An Uber Perspective
+
+At Uber, artificial intelligence is transforming every aspect of how people and goods move through the world. Our AI-powered marketplace matching algorithms analyze billions of data points in real-time to connect riders with drivers optimally, considering factors like ETA, route efficiency, driver availability, and dynamic pricing. This sophisticated matching system reduces wait times, minimizes detours, and increases overall marketplace efficiency. Our deep learning models predict demand patterns across cities, enabling proactive driver positioning and surge pricing that balances supply and demand, ensuring reliability even during peak hours.
+
+Our commitment to autonomous vehicle technology represents the next frontier in mobility. Through the Uber Advanced Technologies Group (ATG) and subsequent partnerships, we have invested heavily in developing self-driving systems that leverage computer vision, sensor fusion, and reinforcement learning. These systems process data from lidar, radar, and cameras to navigate complex urban environments safely. While we have pivoted from direct AV development to strategic partnerships with leaders like Waymo and Motional, our vision remains focused on a future where autonomous vehicles are seamlessly integrated into our platform, reducing costs and expanding access to transportation.
+
+Beyond ride-hailing, AI powers Uber Eats restaurant discovery and delivery optimization, Uber Freight's load matching for trucking, and our Micromobility solutions for e-bikes and scooters. Our machine learning infrastructure processes petabytes of trip data to improve safety features like Real-Time ID Check and RideCheck, which detect anomalies during trips. As we continue to innovate, AI remains central to our mission of making transportation as reliable as running water, everywhere, for everyone.

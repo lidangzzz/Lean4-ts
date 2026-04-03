@@ -1,27 +1,28 @@
 -- Test 63: Parser Combinators (simulated)
 inductive ParseResult where | mk : String → Nat → ParseResult
+deriving Nonempty
 
 def parseChar (c : Char) (s : String) : Option ParseResult :=
-  if s.length > 0 && s.get! 0 = c then
-    some (ParseResult.mk (s.drop 1) 1)
+  if s.length > 0 && s.front = c then
+    some (ParseResult.mk (s.drop 1).toString 1)
   else none
 
 def parseString (str : String) (s : String) : Option ParseResult :=
   if s.startsWith str then
-    some (ParseResult.mk (s.drop str.length) str.length)
+    some (ParseResult.mk (s.drop str.length).toString str.length)
   else none
 
 def parseAnyChar (chars : String) (s : String) : Option ParseResult :=
-  if s.length > 0 && chars.contains (s.get! 0) then
-    some (ParseResult.mk (s.drop 1) 1)
+  if s.length > 0 && chars.contains s.front then
+    some (ParseResult.mk (s.drop 1).toString 1)
   else none
 
-def parseMany (parser : String → Option ParseResult) (s : String) : ParseResult :=
-  let rec loop (remaining : String) (count : Nat) : ParseResult :=
-    match parser remaining with
-    | some (ParseResult.mk rest c) => loop rest (count + c)
-    | none => ParseResult.mk remaining count
-  loop s 0
+partial def parseMany (parser : String → Option ParseResult) (s : String) : ParseResult :=
+  match parser s with
+  | some (ParseResult.mk rest c) =>
+    let (ParseResult.mk rest2 c2) := parseMany parser rest
+    ParseResult.mk rest2 (c + c2)
+  | none => ParseResult.mk s 0
 
 def parseMany1 (parser : String → Option ParseResult) (s : String) : Option ParseResult :=
   match parser s with
@@ -36,17 +37,17 @@ def parseDigits (s : String) : Option ParseResult := parseMany1 parseDigit s
 
 def parseLetter (s : String) : Option ParseResult := parseAnyChar "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ" s
 
+def parseAlphanum (s : String) : Option ParseResult :=
+  match parseLetter s with
+  | some r => some r
+  | none => parseDigit s
+
 def parseIdentifier (s : String) : Option ParseResult :=
   match parseLetter s with
   | some (ParseResult.mk rest1 c1) =>
-    let (ParseResult.mk rest2 c2) := parseMany (fun x => parseLetter x <|> parseDigit x) rest1
+    let (ParseResult.mk rest2 c2) := parseMany parseAlphanum rest1
     some (ParseResult.mk rest2 (c1 + c2))
   | none => none
-where
-  (<|>) (p1 p2 : String → Option ParseResult) (s : String) : Option ParseResult :=
-    match p1 s with
-    | some r => some r
-    | none => p2 s
 
 def parseWhitespace (s : String) : Option ParseResult := parseAnyChar " \t\n\r" s
 
@@ -61,7 +62,7 @@ def parseInt (s : String) : Option (ParseResult × Nat) :=
     some (ParseResult.mk rest' count, num)
   | none => none
 
-def parseExpr (s : String) : Option (ParseResult × Nat) :=
+partial def parseExpr (s : String) : Option (ParseResult × Nat) :=
   let rec parseTerm (s : String) : Option (ParseResult × Nat) :=
     match parseInt s with
     | some (rest, n) =>
@@ -87,3 +88,9 @@ def x := (match p1 with | some (ParseResult.mk _ c) => c | none => 0) +
          (match p2 with | some (ParseResult.mk _ c) => c | none => 0) +
          (match p3 with | some (_, n) => n | none => 0) +
          (match p4 with | some (_, n) => n | none => 0)
+
+#eval s!"Parse digits '{test1}': {p1.isSome}"
+#eval s!"Parse identifier '{test2}': {p2.isSome}"
+#eval s!"Parse int '{test3}': {p3.isSome}"
+#eval s!"Parse expr '{test4}': {p4.isSome}"
+#eval s!"Total x: {x}"

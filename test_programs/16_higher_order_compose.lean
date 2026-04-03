@@ -18,3 +18,8 @@ def composed1 := compose inc double 5
 def composed2 := compose3 inc double square 3
 def piped := pipe 5 [inc, double, square, inc]
 def x := composed1 + composed2 + piped
+
+#eval composed1
+#eval composed2
+#eval piped
+#eval x

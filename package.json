@@ -11,8 +11,8 @@
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
-    "start": "ts-node src/index.ts",
-    "compile": "ts-node src/index.ts",
+    "start": "node --stack-size=4096 node_modules/ts-node/dist/bin.js src/index.ts",
+    "compile": "node --stack-size=4096 node_modules/ts-node/dist/bin.js src/index.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist"
   },

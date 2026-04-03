@@ -38,3 +38,8 @@ def total := tokenCount tokens
 def nums := countNums tokens
 def idents := countIdents tokens
 def x := total + nums + idents
+
+#eval total
+#eval nums
+#eval idents
+#eval x

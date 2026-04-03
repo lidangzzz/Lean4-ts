@@ -32,3 +32,7 @@ def program := [
 def result := run program []
 def sum := List.foldl (fun a b => a + b) 0 result
 def x := sum
+
+#eval result
+#eval sum
+#eval x

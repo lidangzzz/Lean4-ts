@@ -1,6 +1,6 @@
 
-import { compile, run, Lean4Compiler } from '../dist/compiler';
-import { formatValue } from '../dist/types';
+import { compile, run, Lean4Compiler } from '../src/compiler';
+import { formatValue } from '../src/types';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -32,16 +32,24 @@ for (const file of files) {
       continue;
     }
 
-    // Get the value of 'x' or the last defined value
+    // Get the last #eval output or the value of 'x' or the last defined value
     let actual = '';
-    const xValue = result.values.get('x');
-    if (xValue) {
-      actual = formatValue(xValue);
+
+    // First check if there are #eval outputs
+    if (result.output && result.output.trim()) {
+      const outputs = result.output.trim().split('\n');
+      actual = outputs[outputs.length - 1]; // Get the last output
     } else {
-      // Get the last defined value
-      const lastEntry = Array.from(result.values.entries()).pop();
-      if (lastEntry) {
-        actual = formatValue(lastEntry[1]);
+      // Fallback to checking values
+      const xValue = result.values.get('x');
+      if (xValue) {
+        actual = formatValue(xValue);
+      } else {
+        // Get the last defined value
+        const lastEntry = Array.from(result.values.entries()).pop();
+        if (lastEntry) {
+          actual = formatValue(lastEntry[1]);
+        }
       }
     }
 

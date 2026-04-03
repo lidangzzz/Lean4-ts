@@ -1,5 +1,6 @@
 -- Test 77: Radix Tree (Prefix Tree for Bits)
 inductive RadixNode where | mk : List Bool → Option Nat → List RadixNode → RadixNode
+deriving BEq
 
 def bitsToString (bits : List Bool) : String :=
   String.intercalate "" (bits.map (fun b => if b then "1" else "0"))
@@ -13,7 +14,7 @@ def commonPrefix (bits1 bits2 : List Bool) : List Bool :=
       else acc.reverse
   find bits1 bits2 []
 
-def radixInsert (node : RadixNode) (bits : List Bool) (value : Nat) : RadixNode :=
+partial def radixInsert (node : RadixNode) (bits : List Bool) (value : Nat) : RadixNode :=
   match node with
   | RadixNode.mk nodeBits nodeVal children =>
     let cp := commonPrefix bits nodeBits
@@ -25,13 +26,13 @@ def radixInsert (node : RadixNode) (bits : List Bool) (value : Nat) : RadixNode 
         let matchingChild := children.find? (fun child =>
           match child with
           | RadixNode.mk cb _ _ =>
-            !commonPrefix remaining cb |>.isEmpty
+            !(commonPrefix remaining cb).isEmpty
         )
         match matchingChild with
         | some child =>
           let newChild := radixInsert child remaining value
           let newChildren := children.map (fun c =>
-            if c = child then newChild else c
+            if c == child then newChild else c
           )
           RadixNode.mk nodeBits nodeVal newChildren
         | none =>
@@ -43,7 +44,7 @@ def radixInsert (node : RadixNode) (bits : List Bool) (value : Nat) : RadixNode 
         RadixNode.mk (bits.drop cp.length) (some value) []
       ]
 
-def radixSearch (node : RadixNode) (bits : List Bool) : Option Nat :=
+partial def radixSearch (node : RadixNode) (bits : List Bool) : Option Nat :=
   match node with
   | RadixNode.mk nodeBits nodeVal children =>
     if bits.take nodeBits.length = nodeBits then
@@ -96,3 +97,4 @@ def x := (match s1 with | some n => n | none => 0) +
          (match s3 with | some n => n | none => 0) +
          (match s4 with | some n => n | none => 0) +
          cnt + dpt
+#eval x

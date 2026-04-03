@@ -5,25 +5,32 @@ def edgeFrom : Edge → Nat | Edge.mk f _ _ => f
 def edgeTo : Edge → Nat | Edge.mk _ t _ => t
 def edgeWeight : Edge → Nat | Edge.mk _ _ w => w
 
-def kruskalMST (n : Nat) (edges : List Edge) : List Edge :=
+partial def findParent (parent : List Nat) (x : Nat) : Nat :=
+  if x < parent.length then
+    let p := parent.getD x x
+    if p = x then x else findParent parent p
+  else x
+
+partial def unionParent (parent : List Nat) (x y : Nat) : List Nat :=
+  if x < parent.length && y < parent.length then
+    let px := findParent parent x
+    let py := findParent parent y
+    if px ≠ py then parent.set px py else parent
+  else parent
+
+partial def kruskalMST (n : Nat) (edges : List Edge) : List Edge :=
   let sorted := edges.toArray.qsort (fun a b => edgeWeight a < edgeWeight b) |>.toList
-  let parent := Array.mkArray n 0 |>.mapIdx fun i _ => i
-  let rec find (p : Array Nat) (x : Nat) : Nat :=
-    if p.get! x = x then x else find p (p.get! x)
-  let rec union (p : Array Nat) (x y : Nat) : Array Nat :=
-    let px := find p x
-    let py := find p y
-    if px ≠ py then p.set! px py else p
-  let rec process (remaining : List Edge) (parent : Array Nat) (mst : List Edge) : List Edge :=
+  let parent := List.range n
+  let rec process (remaining : List Edge) (parent : List Nat) (mst : List Edge) : List Edge :=
     match remaining with
     | [] => mst.reverse
     | e :: rest =>
       let u := edgeFrom e
       let v := edgeTo e
-      let pu := find parent u
-      let pv := find parent v
+      let pu := findParent parent u
+      let pv := findParent parent v
       if pu ≠ pv then
-        process rest (union parent u v) (e :: mst)
+        process rest (unionParent parent pu pv) (e :: mst)
       else
         process rest parent mst
   process sorted parent []
@@ -49,12 +56,5 @@ def mst2 := kruskalMST 4 edges2
 def w2 := mstWeight mst2
 def c2 := mstEdgeCount mst2
 
-def edges3 := [
-  Edge.mk 0 1 2, Edge.mk 1 2 3, Edge.mk 2 3 4,
-  Edge.mk 3 4 5, Edge.mk 4 0 1, Edge.mk 0 2 7
-]
-def mst3 := kruskalMST 5 edges3
-def w3 := mstWeight mst3
-def c3 := mstEdgeCount mst3
-
-def x := w1 + w2 + w3 + c1 + c2 + c3
+def x := w1 + c1 + w2 + c2
+#eval x

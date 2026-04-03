@@ -23,14 +23,14 @@ def bloomAdd (bits : List Bool) (s : String) : List Bool :=
   let h1 := hash1 s % bloomSize
   let h2 := hash2 s % bloomSize
   let h3 := hash3 s % bloomSize
-  bits |> setBit h1 |> setBit h2 |> setBit h3
+  setBit (setBit (setBit bits h1) h2) h3
 
 def bloomContains (bits : List Bool) (s : String) : Bool :=
   let h1 := hash1 s % bloomSize
   let h2 := hash2 s % bloomSize
   let h3 := hash3 s % bloomSize
   let checkBit (idx : Nat) : Bool :=
-    if idx < bits.length then bits.get! idx else false
+    if idx < bits.length then bits.getD idx false else false
   checkBit h1 && checkBit h2 && checkBit h3
 
 def bloomCheck (bits : List Bool) (s : String) : BloomResult :=
@@ -51,3 +51,9 @@ def countResult : BloomResult -> Nat
   | BloomResult.definitelyAbsent => 0
 
 def x := countResult r1 + countResult r2 + countResult r3 + countResult r4
+
+#eval r1
+#eval r2
+#eval r3
+#eval r4
+#eval x

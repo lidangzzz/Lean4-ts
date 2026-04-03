@@ -48,7 +48,7 @@ def kdCount (tree : KDTree) : Nat :=
   | KDTree.leaf => 0
   | KDTree.node _ _ left right => 1 + kdCount left + kdCount right
 
-def points := [(2, 3), (5, 4), (9, 6), (4, 7), (8, 1), (7, 2)]
+def points : List (Int × Int) := [(2, 3), (5, 4), (9, 6), (4, 7), (8, 1), (7, 2)]
 def kdTree := points.foldl (fun t p => kdInsert t p 0) KDTree.leaf
 
 def nearest := kdSearchNearest kdTree (6, 3)
@@ -60,3 +60,4 @@ def nearestDist := match nearest with
   | none => 0
 
 def x := count + rangeResult.length + nearestDist.toNat
+#eval x

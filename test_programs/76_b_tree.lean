@@ -5,7 +5,7 @@ inductive BTreeNode where
 
 def btreeOrder := 3
 
-def btreeSearch (tree : BTreeNode) (key : Nat) : Bool :=
+partial def btreeSearch (tree : BTreeNode) (key : Nat) : Bool :=
   match tree with
   | BTreeNode.leaf keys => keys.contains key
   | BTreeNode.node keys children =>
@@ -15,11 +15,11 @@ def btreeSearch (tree : BTreeNode) (key : Nat) : Bool :=
       | k :: rest =>
         if key < k then i else findChild rest (i + 1)
     let idx := findChild keys 0
-    match children.get? idx with
-    | some child => btreeSearch child key
-    | none => false
+    if h : idx < children.length then
+      btreeSearch (children.get ⟨idx, h⟩) key
+    else false
 
-def btreeInsert (tree : BTreeNode) (key : Nat) : BTreeNode :=
+partial def btreeInsert (tree : BTreeNode) (key : Nat) : BTreeNode :=
   match tree with
   | BTreeNode.leaf keys =>
     let newKeys := (keys ++ [key]).toArray.qsort (· < ·) |>.toList
@@ -27,7 +27,7 @@ def btreeInsert (tree : BTreeNode) (key : Nat) : BTreeNode :=
       let mid := newKeys.length / 2
       let leftKeys := newKeys.take mid
       let rightKeys := newKeys.drop (mid + 1)
-      let midKey := newKeys.get! mid
+      let midKey := newKeys.getD mid 0
       BTreeNode.node [midKey] [BTreeNode.leaf leftKeys, BTreeNode.leaf rightKeys]
     else
       BTreeNode.leaf newKeys
@@ -37,12 +37,12 @@ def btreeInsert (tree : BTreeNode) (key : Nat) : BTreeNode :=
       | [] => i
       | k :: rest => if key < k then i else findIdx rest (i + 1)
     let idx := findIdx keys 0
-    match children.get? idx with
-    | some child =>
+    if h : idx < children.length then
+      let child := children.get ⟨idx, h⟩
       let newChild := btreeInsert child key
-      let newChildren := children.set idx newChild
+      let newChildren := children.take idx ++ [newChild] ++ children.drop (idx + 1)
       BTreeNode.node keys newChildren
-    | none => tree
+    else tree
 
 def btreeHeight : BTreeNode → Nat
   | BTreeNode.leaf _ => 1
@@ -70,3 +70,4 @@ def h := btreeHeight btree
 def sz := btreeSize btree
 
 def x := (if s1 then 1 else 0) + (if s2 then 1 else 0) + (if s3 then 1 else 0) + h + sz
+#eval x

@@ -56,3 +56,10 @@ def h := treapHeight treap
 def sz := treapSize treap
 
 def x := (if s1 then 1 else 0) + (if s2 then 1 else 0) + (if s3 then 1 else 0) + h + sz
+
+#eval s1
+#eval s2
+#eval s3
+#eval h
+#eval sz
+#eval x

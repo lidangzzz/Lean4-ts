@@ -1,64 +1,71 @@
 -- Test 58: Simple Prolog-like resolution
-     2→inductive PrologTerm where
-     3→  | atom : String -> PrologTerm
-     4→  | var : String -> PrologTerm
-     5→  | compound : String -> List PrologTerm -> PrologTerm
-     6→
-     7->partial def prologOccurs (name : String) : PrologTerm -> Bool
-     8→    | PrologTerm.atom _ => false
-     9→    | PrologTerm.var _ => PrologTerm.var name
-    10→
-    11→inductive PrologGoal where
-    12→  | fact : PrologTerm -> PrologGoal
-    13→  | rule : PrologTerm -> List PrologTerm -> PrologGoal
-    14→        (facts : List (String × PrologTerm))
-    15→    | goals.isEmpty => []
-    16→
-    17->def unify (t1 t2 : PrologTerm) : Option (List (String × PrologTerm)) :=
-    18--   let rec doUnify (a b : PrologTerm) (bindings: List (String × PrologTerm)) : Option (List (String × PrologTerm)) :=
-    19--    match a, b with
-    20--        | some (_, t) => doUnify a b tbindings
-    21--        | none => term
-    22--      | PrologTerm.var m =>
-    23--        | some ((n, t) => applyBindings tbindings
-    24--        | _ => some ((n, t) ::bindings)
-    25--        | PrologTerm.var m =>
-    26--      | PrologTerm.var m =>
-    27--          if n = m then some bindings else none
-    28--        | PrologTerm.var n =>
-    29--      | PrologTerm.var n =>
-    30--def applyBindings (term : PrologTerm) (bindings : List (String × PrologTerm)) : PrologTerm :=
-    31--  match term with
-    32--  | PrologTerm.atom _ => term
-    33--  | PrologTerm.var n =>
-    34--    match bindings.find? (fun (name, _) => name = n) with
-    35--      | some (_, t) => applyBindings t bindings
-    36--        | none => term
-    37--    | PrologTerm.var n =>
-    38--      | PrologTerm.var n =>
-    39--        if prologOccurs n t then some bindings else none
-    40--        | _ => some bindings
-    41--      | none => none
-    42--    | _ => none
-    43--  end
-    44--
-    45--def goals := [goal(PrologGoal.fact (PrologTerm.atom "parent") [PrologTerm.atom "alice"])]
-    46--
-    47--def rules := [
-    48--  rule(PrologGoal.fact(PrologTerm.atom "parent") [PrologTerm.var "X", PrologTerm.var "Z"])
-    49--
-    50--def query1 := PrologTerm.compound "parent" [PrologTerm.atom "alice", PrologTerm.atom "bob"]
-    51--
-    52--def result1 := unify query1 goals rules
-    53--
-    54--def query2 := PrologTerm.compound "parent" [PrologTerm.atom "alice", PrologTerm.atom "carol"]
-    55--
-    56--def result2 := unify query2 goals rules
-    57--
-    58--def x := (if result1.isEmpty then 0 else 1) + (if result2.isEmpty then 0 else 1) + goals.length + rules.length
-    59--
-    60--#eval s!"Goals: {goals}"
-    61--#eval s!"Rules: {rules}"
-    62--#eval s!"Result1 (parent alice bob): {result1.isEmpty}"
-    63--#eval s!"Result2 (parent alice carol): {result2.isEmpty}"
-    64--#eval s!"Total x: {x}"
+inductive PrologTerm where
+  | atom : String → PrologTerm
+  | var : String → PrologTerm
+  | compound : String → List PrologTerm → PrologTerm
+deriving Repr, Inhabited
+
+inductive PrologGoal where
+  | fact : PrologTerm → PrologGoal
+  | rule : PrologTerm → List PrologTerm → PrologGoal
+deriving Repr
+
+-- Check if a variable occurs in a term
+partial def prologOccurs (name : String) : PrologTerm → Bool
+  | PrologTerm.atom _ => false
+  | PrologTerm.var n => n == name
+  | PrologTerm.compound _ args => args.any (prologOccurs name)
+
+-- Apply bindings to a term
+partial def applyBindings (term : PrologTerm) (bindings : List (String × PrologTerm)) : PrologTerm :=
+  match term with
+  | PrologTerm.atom _ => term
+  | PrologTerm.var n =>
+    match bindings.find? (fun (name, _) => name == n) with
+    | some (_, t) => applyBindings t bindings
+    | none => term
+  | PrologTerm.compound name args =>
+    PrologTerm.compound name (args.map (fun a => applyBindings a bindings))
+
+-- Unify two terms
+partial def unify (t1 t2 : PrologTerm) (bindings : List (String × PrologTerm)) : Option (List (String × PrologTerm)) :=
+  let t1' := applyBindings t1 bindings
+  let t2' := applyBindings t2 bindings
+  match t1', t2' with
+  | PrologTerm.atom a, PrologTerm.atom b => if a == b then some bindings else none
+  | PrologTerm.var n, t =>
+    if prologOccurs n t then none else some ((n, t) :: bindings)
+  | t, PrologTerm.var n =>
+    if prologOccurs n t then none else some ((n, t) :: bindings)
+  | PrologTerm.compound n1 args1, PrologTerm.compound n2 args2 =>
+    if n1 == n2 && args1.length == args2.length then
+      (List.zip args1 args2).foldlM (fun bs (a1, a2) => unify a1 a2 bs) bindings
+    else none
+  | _, _ => none
+
+-- Simple knowledge base
+def facts : List PrologTerm := [
+  PrologTerm.compound "parent" [PrologTerm.atom "alice", PrologTerm.atom "bob"],
+  PrologTerm.compound "parent" [PrologTerm.atom "bob", PrologTerm.atom "carol"]
+]
+
+-- Try to match a query against facts
+partial def solveQuery (query : PrologTerm) (facts : List PrologTerm) : List (List (String × PrologTerm)) :=
+  facts.filterMap (fun fact => unify query fact [])
+
+-- Test queries
+def query1 := PrologTerm.compound "parent" [PrologTerm.atom "alice", PrologTerm.var "Y"]
+def query2 := PrologTerm.compound "parent" [PrologTerm.var "X", PrologTerm.atom "carol"]
+def query3 := PrologTerm.compound "parent" [PrologTerm.atom "alice", PrologTerm.atom "bob"]
+
+def result1 := solveQuery query1 facts
+def result2 := solveQuery query2 facts
+def result3 := solveQuery query3 facts
+
+def totalResults := result1.length + result2.length + result3.length
+
+#eval s!"Query 1 (parent alice Y): {result1.length} solutions"
+#eval s!"Query 2 (parent X carol): {result2.length} solutions"
+#eval s!"Query 3 (parent alice bob): {result3.length} solutions"
+#eval s!"Total results: {totalResults}"
+#eval s!"Facts count: {facts.length}"

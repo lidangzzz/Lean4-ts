@@ -9,3 +9,9 @@ def c27 := collatzLen 27
 def c97 := collatzLen 97
 def c871 := collatzLen 871
 def x := c7 + c27 + c97 + c871
+
+#eval c7
+#eval c27
+#eval c97
+#eval c871
+#eval x
